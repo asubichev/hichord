@@ -12,12 +12,22 @@ done
 rm -rf dist && mkdir -p dist/rSplex.app/Contents/MacOS
 lipo -create -output dist/rSplex.app/Contents/MacOS/rSplex \
     .build/arm64/release/rSplex .build/x86_64/release/rSplex
+# App icon: every size macOS wants, generated from the 1024px master.
+mkdir -p dist/rSplex.app/Contents/Resources dist/AppIcon.iconset
+for SIZE in 16 32 128 256 512; do
+    sips -z $SIZE $SIZE Resources/AppIcon.png --out "dist/AppIcon.iconset/icon_${SIZE}x${SIZE}.png" >/dev/null
+    sips -z $((SIZE * 2)) $((SIZE * 2)) Resources/AppIcon.png --out "dist/AppIcon.iconset/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+done
+iconutil -c icns dist/AppIcon.iconset -o dist/rSplex.app/Contents/Resources/AppIcon.icns
+rm -rf dist/AppIcon.iconset
+
 cat > dist/rSplex.app/Contents/Info.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>rSplex</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleIdentifier</key><string>com.asubichev.rsplex</string>
     <key>CFBundleName</key><string>rSplex</string>
     <key>CFBundlePackageType</key><string>APPL</string>
