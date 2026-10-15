@@ -5,41 +5,29 @@ import rSplexCore
 let degreeKeys = ["a", "s", "d", "f", "g", "h", "j"]
 let modKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
 
+/// Hosts the VoiceEngine in the audio callback. The UI queues events; the callback drains them at the start of
+/// each buffer (a few ms), and anything clocked by the engine itself lands on the exact sample.
 final class Synth {
     let engine = AVAudioEngine()
-    let lock = NSLock()
-    private var freqs: [Double] = []
-    private var gate = false
-    private var cur: [Double] = []
-    private var phases = [Double](repeating: 0, count: 32)
-    private var env = 0.0, lp = 0.0
+    private let lock = NSLock()
+    private var pending: [VoiceEvent] = []
+    private var draining: [VoiceEvent] = []
+    private var core: VoiceEngine
+    private var beatsSnapshot = 0.0
 
     init() {
         let sr = engine.outputNode.outputFormat(forBus: 0).sampleRate
+        core = VoiceEngine(sampleRate: sr)
+        pending.reserveCapacity(256); draining.reserveCapacity(256)
         let fmt = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 1)!
         let src = AVAudioSourceNode(format: fmt) { [unowned self] _, _, frameCount, abl in
-            let bufs = UnsafeMutableAudioBufferListPointer(abl)
-            self.lock.lock(); let f = self.freqs; let g = self.gate; self.lock.unlock()
-            if g { self.cur = f }
-            let atk = 1.0 / (0.005 * sr), rel = 1.0 / (0.3 * sr)
-            let out = bufs[0].mData!.assumingMemoryBound(to: Float.self)
-            let n = min(self.cur.count, 16)
-            for i in 0..<Int(frameCount) {
-                self.env = g ? min(1, self.env + atk) : max(0, self.env - rel)
-                var s = 0.0
-                for k in 0..<n {
-                    // Each note gets a slightly detuned partner oscillator.
-                    for (j, det) in [(2 * k, 0.9985), (2 * k + 1, 1.0015)] {
-                        self.phases[j] += self.cur[k] * det / sr
-                        if self.phases[j] >= 1 { self.phases[j] -= 1 }
-                        let p = self.phases[j]
-                        s += 0.25 * (2 * p - 1) + 0.25 * sin(2 * .pi * p)
-                    }
-                }
-                if n > 0 { s /= Double(n) }
-                self.lp += 0.2 * (s - self.lp)
-                out[i] = Float(self.lp * self.env * 0.35)
-            }
+            let out = UnsafeMutableAudioBufferListPointer(abl)[0].mData!.assumingMemoryBound(to: Float.self)
+            // Swap buffers under the lock so the audio thread never allocates.
+            self.lock.lock(); swap(&self.pending, &self.draining); self.lock.unlock()
+            for e in self.draining { self.core.handle(e) }
+            self.draining.removeAll(keepingCapacity: true)
+            self.core.render(frames: Int(frameCount), into: out)
+            self.lock.lock(); self.beatsSnapshot = self.core.beats; self.lock.unlock()
             return noErr
         }
         engine.attach(src)
@@ -47,16 +35,23 @@ final class Synth {
         do { try engine.start() } catch { print("Audio failed: \(error)") }
     }
 
-    func play(midi: [Int]) {
-        lock.lock(); freqs = midi.map { 440 * pow(2, Double($0 - 69) / 12) }; gate = true; lock.unlock()
+    func send(_ events: [VoiceEvent]) {
+        guard !events.isEmpty else { return }
+        lock.lock(); pending.append(contentsOf: events); lock.unlock()
     }
-    func stop() { lock.lock(); gate = false; lock.unlock() }
+
+    var beats: Double { lock.lock(); defer { lock.unlock() }; return beatsSnapshot }
 }
 
 final class ChordView: NSView {
     let synth = Synth()
     var state = RSplexState()
     var display = "—"
+    var sounding: Set<Int> = []
+    var envelopeIdx = 0
+    var bpm = 120.0
+    var tapTempo = TapTempo()
+    var beatLit = false
     /// Lock animation: when the current lock started (pulse), and the degree/time of the last unlock (badge fade).
     var lockedAt: Double?
     var unlocked: (degree: Int, at: Double)?
@@ -80,20 +75,29 @@ final class ChordView: NSView {
         let animating = lockedAt.map { t - $0 < Self.pulseSeconds } == true
             || unlocked.map { t - $0.at < Self.fadeSeconds } == true
         if state.lockProgress(now: t) != nil || animating { update() }
+        // Beat light: on for the first 10% of each beat.
+        let lit = synth.beats.truncatingRemainder(dividingBy: 1) < 0.1
+        if lit != beatLit { beatLit = lit; needsDisplay = true }
     }
 
     func update() {
         let wasLocked = state.lock != nil
-        if let out = state.render(now: now) { synth.play(midi: out.notes); display = out.name }
-        else { synth.stop(); display = "—" }
+        let out = state.render(now: now)
+        display = out?.name ?? "—"
+        let next = Set(out?.notes ?? [])
+        let (off, on) = chordDiff(from: sounding, to: next)
+        let adsr = envelopePresets[envelopeIdx].adsr
+        let gain = 3 / Double(max(3, next.count))
+        synth.send(off.map { .noteOff($0) } + on.map { .noteOn($0, adsr, gain: gain) })
+        sounding = next
         if !wasLocked, state.lock != nil { lockedAt = now }
         needsDisplay = true
     }
 
     override func keyDown(with e: NSEvent) {
         let c = e.charactersIgnoringModifiers?.lowercased() ?? ""
-        let isArrowOrTab = [123, 124, 125, 126, 48].contains(e.keyCode)
-        if e.isARepeat && !isArrowOrTab { return }
+        let repeatable = [123, 124, 125, 126, 48, 33, 30].contains(e.keyCode)   // arrows, Tab, [ ]
+        if e.isARepeat && !repeatable { return }
         // Any key press breaks a lock; the press then does its normal job.
         let degree = degreeKeys.firstIndex(of: c)
         if let d = state.breakLock(pressingDegree: degree) { unlocked = (d, now); lockedAt = nil }
@@ -103,6 +107,12 @@ final class ChordView: NSView {
         case 125: state.shiftOctave(-1)
         case 126: state.shiftOctave(1)
         case 48: e.modifierFlags.contains(.shift) ? state.previousScale() : state.nextScale()
+        case 33, 30:   // [ ] tempo, ±10 with Shift
+            setBPM(bpm + (e.keyCode == 30 ? 1 : -1) * (e.modifierFlags.contains(.shift) ? 10 : 1))
+        case 42:       // \ tap tempo
+            if let b = tapTempo.tap(at: now) { setBPM(b.rounded()) }
+        case 14:       // E envelope preset
+            envelopeIdx = (envelopeIdx + 1) % envelopePresets.count
         default:
             if let d = degree { state.press(degree: d) }
             else if let m = modKeys.firstIndex(of: c) { state.press(mod: m) }
@@ -113,6 +123,11 @@ final class ChordView: NSView {
             else { update(); super.keyDown(with: e); return }
         }
         update()
+    }
+
+    func setBPM(_ b: Double) {
+        bpm = min(bpmRange.upperBound, max(bpmRange.lowerBound, b))
+        synth.send([.setBPM(bpm)])
     }
 
     override func keyUp(with e: NSEvent) {
@@ -136,10 +151,13 @@ final class ChordView: NSView {
             drawLockBadge(at: NSPoint(x: x, y: 26), size: 20, alpha: 1)
         }
         "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
-        let settings = "Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
+        let settings = "Env \(envelopePresets[envelopeIdx].name)   \(Int(bpm)) BPM   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
             + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])   Lock \(s.lockEnabled ? "ON" : "OFF")"
         let settingsWidth = settings.size(withAttributes: small).width
         settings.draw(at: NSPoint(x: bounds.width - 20 - settingsWidth, y: 66), withAttributes: small)
+        // Beat light, left of the settings.
+        (beatLit ? NSColor.systemGreen : NSColor(white: 0.3, alpha: 1)).setFill()
+        NSBezierPath(ovalIn: NSRect(x: bounds.width - 20 - settingsWidth - 16, y: 69, width: 8, height: 8)).fill()
         let gap: CGFloat = 8
         let w = (bounds.width - 40 - 6 * gap) / 7
         for d in 0..<7 {
@@ -184,7 +202,7 @@ final class ChordView: NSView {
             modKeys[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 4), withAttributes: small)
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: small)
         }
-        "Hold A–J = chords (4 s locks) · hold 1–0 = modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock"
+        "Hold A–J chords (4 s locks) · hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env · [ ] tempo · \\ tap"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
     }
 
@@ -205,7 +223,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     let view = ChordView()
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 840, height: 290),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "rSplex"
         window.contentView = view
