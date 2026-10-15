@@ -16,9 +16,7 @@ A chord synth for macOS, played from the computer keyboard.
 | V | voice leading on/off |
 | B | bass: OFF / ROOT / SLASH (hold the bass chord key, then the chord) |
 | L | hold-to-lock on/off |
-| E | envelope: CLASSIC / LONG / SHORT / SWELL / PLUCK / TOUCH / SUSTAIN |
-| [ / ] | tempo −1 / +1 BPM (Shift: ±10) |
-| \\ | tap tempo (3+ taps) |
+| E | envelope: CLASSIC / SWELL / SHORT |
 
 ## Download
 

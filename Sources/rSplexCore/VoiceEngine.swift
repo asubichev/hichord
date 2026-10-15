@@ -8,15 +8,11 @@ public struct ADSR: Equatable {
     }
 }
 
-/// CLASSIC is the original rSplex envelope; the rest follow common pad/stab/pluck shapes.
+/// CLASSIC is the original rSplex envelope; SWELL fades in and rings out; SHORT is a tight stab.
 public let envelopePresets: [(name: String, adsr: ADSR)] = [
     ("CLASSIC", ADSR(0.005, 0, 1, 0.3)),
-    ("LONG", ADSR(0.8, 1.0, 0.7, 2.0)),
-    ("SHORT", ADSR(0.1, 0.1, 1.0, 0.12)),
     ("SWELL", ADSR(0.8, 0.3, 0.8, 2.0)),
-    ("PLUCK", ADSR(0.005, 0.08, 0, 0.18)),
-    ("TOUCH", ADSR(0.025, 0.26, 0.66, 0.45)),
-    ("SUSTAIN", ADSR(0.2, 0.3, 0.85, 3.0)),
+    ("SHORT", ADSR(0.1, 0.1, 1.0, 0.12)),
 ]
 
 public let bpmRange = 40.0...300.0

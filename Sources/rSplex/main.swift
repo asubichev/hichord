@@ -49,9 +49,6 @@ final class ChordView: NSView {
     var display = "—"
     var sounding: Set<Int> = []
     var envelopeIdx = 0
-    var bpm = 120.0
-    var tapTempo = TapTempo()
-    var beatLit = false
     /// Lock animation: when the current lock started (pulse), and the degree/time of the last unlock (badge fade).
     var lockedAt: Double?
     var unlocked: (degree: Int, at: Double)?
@@ -75,9 +72,6 @@ final class ChordView: NSView {
         let animating = lockedAt.map { t - $0 < Self.pulseSeconds } == true
             || unlocked.map { t - $0.at < Self.fadeSeconds } == true
         if state.lockProgress(now: t) != nil || animating { update() }
-        // Beat light: on for the first 10% of each beat.
-        let lit = synth.beats.truncatingRemainder(dividingBy: 1) < 0.1
-        if lit != beatLit { beatLit = lit; needsDisplay = true }
     }
 
     func update() {
@@ -96,7 +90,7 @@ final class ChordView: NSView {
 
     override func keyDown(with e: NSEvent) {
         let c = e.charactersIgnoringModifiers?.lowercased() ?? ""
-        let repeatable = [123, 124, 125, 126, 48, 33, 30].contains(e.keyCode)   // arrows, Tab, [ ]
+        let repeatable = [123, 124, 125, 126, 48].contains(e.keyCode)   // arrows, Tab
         if e.isARepeat && !repeatable { return }
         // Any key press breaks a lock; the press then does its normal job.
         let degree = degreeKeys.firstIndex(of: c)
@@ -107,10 +101,6 @@ final class ChordView: NSView {
         case 125: state.shiftOctave(-1)
         case 126: state.shiftOctave(1)
         case 48: e.modifierFlags.contains(.shift) ? state.previousScale() : state.nextScale()
-        case 33, 30:   // [ ] tempo, ±10 with Shift
-            setBPM(bpm + (e.keyCode == 30 ? 1 : -1) * (e.modifierFlags.contains(.shift) ? 10 : 1))
-        case 42:       // \ tap tempo
-            if let b = tapTempo.tap(at: now) { setBPM(b.rounded()) }
         case 14:       // E envelope preset
             envelopeIdx = (envelopeIdx + 1) % envelopePresets.count
         default:
@@ -123,11 +113,6 @@ final class ChordView: NSView {
             else { update(); super.keyDown(with: e); return }
         }
         update()
-    }
-
-    func setBPM(_ b: Double) {
-        bpm = min(bpmRange.upperBound, max(bpmRange.lowerBound, b))
-        synth.send([.setBPM(bpm)])
     }
 
     override func keyUp(with e: NSEvent) {
@@ -151,13 +136,10 @@ final class ChordView: NSView {
             drawLockBadge(at: NSPoint(x: x, y: 26), size: 20, alpha: 1)
         }
         "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
-        let settings = "Env \(envelopePresets[envelopeIdx].name)   \(Int(bpm)) BPM   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
+        let settings = "Env \(envelopePresets[envelopeIdx].name)   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
             + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])   Lock \(s.lockEnabled ? "ON" : "OFF")"
         let settingsWidth = settings.size(withAttributes: small).width
         settings.draw(at: NSPoint(x: bounds.width - 20 - settingsWidth, y: 66), withAttributes: small)
-        // Beat light, left of the settings.
-        (beatLit ? NSColor.systemGreen : NSColor(white: 0.3, alpha: 1)).setFill()
-        NSBezierPath(ovalIn: NSRect(x: bounds.width - 20 - settingsWidth - 16, y: 69, width: 8, height: 8)).fill()
         let gap: CGFloat = 8
         let w = (bounds.width - 40 - 6 * gap) / 7
         for d in 0..<7 {
@@ -202,7 +184,7 @@ final class ChordView: NSView {
             modKeys[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 4), withAttributes: small)
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: small)
         }
-        "Hold A–J chords (4 s locks) · hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env · [ ] tempo · \\ tap"
+        "Hold A–J chords (4 s locks) · hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
     }
 
@@ -223,7 +205,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     let view = ChordView()
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 840, height: 290),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "rSplex"
         window.contentView = view

@@ -31,9 +31,9 @@ func run(_ e: inout VoiceEngine, seconds: Double) -> Float {
     #expect(e.voice(for: 60)!.stage == .sustain)
 }
 
-@Test func pluckDiesOutEvenWhileHeld() {
+@Test func zeroSustainDiesOutEvenWhileHeld() {
     var e = VoiceEngine(sampleRate: sr)
-    e.handle(.noteOn(60, envelopePresets.first { $0.name == "PLUCK" }!.adsr))
+    e.handle(.noteOn(60, ADSR(0.005, 0.08, 0, 0.18)))
     run(&e, seconds: 0.1)
     #expect(e.activeNotes.isEmpty)
     #expect(run(&e, seconds: 0.05) < 0.001)
