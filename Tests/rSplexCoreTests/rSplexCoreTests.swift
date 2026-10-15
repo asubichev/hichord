@@ -23,7 +23,7 @@ let major = scales[0].steps
     #expect(c(0, 3).name == "Cadd9" && c(0, 3).iv == [0, 4, 7, 14])
     #expect(c(0, 4).name == "Csus4")
     #expect(c(0, 5).name == "C6" && c(1, 5).name == "Dsus2")
-    #expect(c(0, 6).name == "Cm" && c(1, 6).name == "Ddim")
+    #expect(c(0, 6).name == "Cdim" && c(1, 6).name == "Ddim")
     #expect(c(0, 7).name == "Caug" && c(0, 8).name == "Csus2")
     #expect(c(0, 9).name == "C5" && c(0, 9).iv == [0, 7, 12])
 }
@@ -113,11 +113,12 @@ let major = scales[0].steps
     #expect(s.render()!.notes.count == 3)
 }
 
-@Test func minorDimToggleSwitchesBothWays() {
+@Test func dimModifierDiminishesAndTogglesDimToMinor() {
     func c(_ d: Int) -> Chord { chord(degree: d, key: 0, scale: major, mod: 6) }
-    #expect(c(0).name == "Cm" && c(0).iv == [0, 3, 7])      // major -> minor
+    #expect(c(0).name == "Cdim" && c(0).iv == [0, 3, 6])    // major -> dim
     #expect(c(1).name == "Ddim" && c(1).iv == [0, 3, 6])    // minor -> dim
     #expect(c(6).name == "Bm" && c(6).iv == [0, 3, 7])      // dim -> minor
+    #expect(chord(degree: 2, key: 9, scale: scales[2].steps, mod: 6).name == "Cdim")   // aug -> dim
 }
 
 @Test func voiceLeadingDoesNotDriftOverRepeatedProgressions() {

@@ -5,7 +5,7 @@ public let scales: [(name: String, steps: [Int])] = [
     ("Dorian", [0, 2, 3, 5, 7, 9, 10]), ("Mixolydian", [0, 2, 4, 5, 7, 9, 10]),
     ("Lydian", [0, 2, 4, 6, 7, 9, 11])]
 /// Number-row modifiers, held while a chord key is down.
-public let modLabels = ["M/m flip", "7", "maj7/m7", "add9", "sus4", "6/sus2", "m/dim", "aug", "sus2", "5"]
+public let modLabels = ["M/m flip", "7", "maj7/m7", "add9", "sus4", "6/sus2", "dim/m", "aug", "sus2", "5"]
 public let bassModes = ["OFF", "ROOT", "SLASH"]
 public let octaveRange = -1...2
 
@@ -42,8 +42,8 @@ public func chord(degree d: Int, key: Int, scale: [Int], mod: Int?) -> Chord {
         case 4: iv = [0, 5, 7]; suffix = "sus4"
         case 5: if major { iv = [0, 4, 7, 9]; suffix = "6" } else { iv = [0, 2, 7]; suffix = "sus2" }
         case 6:
-            // Toggles between minor and diminished; a major chord goes to minor.
-            if third == 3 && fifth == 7 { iv = [0, 3, 6]; suffix = "dim" } else { iv = [0, 3, 7]; suffix = "m" }
+            // Diminishes the chord; an already-diminished chord goes to minor (key 1 covers major -> minor).
+            if third == 3 && fifth == 6 { iv = [0, 3, 7]; suffix = "m" } else { iv = [0, 3, 6]; suffix = "dim" }
         case 7: iv = [0, 4, 8]; suffix = "aug"
         case 8: iv = [0, 2, 7]; suffix = "sus2"
         default: iv = [0, 7, 12]; suffix = "5"
