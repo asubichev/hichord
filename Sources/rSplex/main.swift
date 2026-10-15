@@ -109,6 +109,7 @@ final class ChordView: NSView {
             else if c == "z" { state.cycleInversion() }
             else if c == "v" { state.voiceLeading.toggle() }
             else if c == "b" { state.cycleBass() }
+            else if c == "l" { state.lockEnabled.toggle() }
             else { update(); super.keyDown(with: e); return }
         }
         update()
@@ -136,7 +137,7 @@ final class ChordView: NSView {
         }
         "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
         let settings = "Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
-            + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])"
+            + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])   Lock \(s.lockEnabled ? "ON" : "OFF")"
         let settingsWidth = settings.size(withAttributes: small).width
         settings.draw(at: NSPoint(x: bounds.width - 20 - settingsWidth, y: 66), withAttributes: small)
         let gap: CGFloat = 8
@@ -176,12 +177,14 @@ final class ChordView: NSView {
         let qw = (bounds.width - 40 - 9 * 6) / 10
         for i in 0..<10 {
             let rect = NSRect(x: 20 + CGFloat(i) * (qw + 6), y: 198, width: qw, height: 50)
-            (s.mods.last == i ? NSColor.systemTeal : NSColor(white: 0.22, alpha: 1)).setFill()
+            // A locked chord keeps its modifier lit after the key is released.
+            let active = s.lock.map { $0.mod == i } ?? (s.mods.last == i)
+            (active ? NSColor.systemTeal : NSColor(white: 0.22, alpha: 1)).setFill()
             NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
             modKeys[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 4), withAttributes: small)
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: small)
         }
-        "Hold A–J = chords (4 s locks) · hold 1–0 = modify · ←/→ key · ↑/↓ octave · Tab/⇧Tab scale · Z inv · V voice lead · B bass"
+        "Hold A–J = chords (4 s locks) · hold 1–0 = modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
     }
 

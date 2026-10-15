@@ -15,6 +15,7 @@ A chord synth for macOS, played from the computer keyboard.
 | Z | inversion |
 | V | voice leading on/off |
 | B | bass: OFF / ROOT / SLASH (hold the bass chord key, then the chord) |
+| L | hold-to-lock on/off |
 
 ## Download
 

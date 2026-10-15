@@ -196,6 +196,7 @@ let major = scales[0].steps
     s.press(degree: 4); s.press(mod: 1)
     _ = s.render(now: 0)
     _ = s.render(now: 4)
+    #expect(s.lock?.mod == 1)
     s.release(mod: 1); s.release(degree: 4)
     #expect(s.render(now: 5)?.name == "G7")
 }
@@ -245,4 +246,19 @@ let major = scales[0].steps
     s.press(degree: 0)                          // a fresh press can lock again
     _ = s.render(now: 22); _ = s.render(now: 26)
     #expect(s.lock != nil)
+}
+
+@Test func lockCanBeTurnedOff() {
+    var s = RSplexState()
+    s.lockEnabled = false
+    s.press(degree: 0)
+    _ = s.render(now: 0); _ = s.render(now: 60)
+    #expect(s.lock == nil)
+    #expect(s.lockProgress(now: 60) == nil)
+    s.release(degree: 0)
+    #expect(s.render(now: 61) == nil)
+    s.lockEnabled = true             // re-enabled: works again on a fresh hold
+    s.press(degree: 0)
+    _ = s.render(now: 70); _ = s.render(now: 74)
+    #expect(s.lock?.mod == nil)
 }

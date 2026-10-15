@@ -97,12 +97,16 @@ public struct Output: Equatable {
 /// A chord that keeps sounding after its keys are released, until any key is pressed.
 public struct Lock: Equatable {
     public var degree: Int
+    /// Number-row modifier held when it locked, if any.
+    public var mod: Int?
     public var output: Output
 }
 
 public struct RSplexState {
     public var key = 0, scaleIdx = 0, inversion = 0, bassMode = 0
     public var voiceLeading = false
+    /// Hold-to-lock on/off.
+    public var lockEnabled = true
     public private(set) var octave = 0
     public private(set) var held: [Int] = []   // scale degrees, in press order
     public private(set) var mods: [Int] = []   // modifiers, in press order
@@ -156,7 +160,7 @@ public struct RSplexState {
 
     /// 0…1 progress toward locking the sounding chord; nil when nothing could lock.
     public func lockProgress(now: Double) -> Double? {
-        guard lock == nil, let since = soundingSince, let d = held.last, d != noLockDegree else { return nil }
+        guard lockEnabled, lock == nil, let since = soundingSince, let d = held.last, d != noLockDegree else { return nil }
         return min(1, (now - since) / lockHoldSeconds)
     }
 
@@ -171,7 +175,7 @@ public struct RSplexState {
         if let l = lock { return l.output }
         guard let out = renderHeld() else { soundingSince = nil; lastOutput = nil; return nil }
         if out != lastOutput { soundingSince = now; lastOutput = out }
-        if let p = lockProgress(now: now), p >= 1 { lock = Lock(degree: held.last!, output: out) }
+        if let p = lockProgress(now: now), p >= 1 { lock = Lock(degree: held.last!, mod: mods.last, output: out) }
         return out
     }
 
