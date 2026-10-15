@@ -1,0 +1,23 @@
+name: Release
+on:
+  push:
+    branches: [main]
+concurrency: release
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+      - name: Version from VERSION file + run number
+        run: echo "VERSION=$(cat VERSION).${{ github.run_number }}" >> "$GITHUB_ENV"
+      - run: scripts/bundle.sh "$VERSION"
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION" dist/HiChord.zip \
+            --title "HiChord $VERSION" --generate-notes \
+            --notes "Download **HiChord.zip**, unzip, then right-click HiChord.app → Open the first time (it's not notarized). Works on Apple Silicon and Intel Macs, macOS 13+."

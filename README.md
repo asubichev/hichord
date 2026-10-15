@@ -15,3 +15,14 @@ A HiChord-style chord synth for macOS, played from the computer keyboard.
 | Z | inversion |
 | V | voice leading on/off |
 | B | bass: OFF / ROOT / SLASH (hold the bass chord key, then the chord) |
+
+## Download
+
+Grab **HiChord.zip** from the [latest release](https://github.com/asubichev/hichord/releases/latest), unzip, and double-click
+`HiChord.app`. The first time, right-click it → **Open** → **Open** (the app isn't notarized). If there's no Open option,
+use System Settings → Privacy & Security → **Open Anyway**.
+
+## Releasing
+
+Every merge to `main` runs the tests and publishes a release `v<VERSION>.<run number>`. Bump `VERSION` for a new minor line.
+Build locally with `scripts/bundle.sh <version>`.
