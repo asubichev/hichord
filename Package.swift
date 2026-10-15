@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "HiChord",
+    name: "rSplex",
     platforms: [.macOS(.v13)],
     targets: [
-        .target(name: "HiChordCore"),
-        .executableTarget(name: "HiChord", dependencies: ["HiChordCore"]),
-        .testTarget(name: "HiChordCoreTests", dependencies: ["HiChordCore"]),
+        .target(name: "rSplexCore"),
+        .executableTarget(name: "rSplex", dependencies: ["rSplexCore"]),
+        .testTarget(name: "rSplexCoreTests", dependencies: ["rSplexCore"]),
     ]
 )

@@ -1,5 +1,5 @@
 import Testing
-@testable import HiChordCore
+@testable import rSplexCore
 
 let major = scales[0].steps
 
@@ -42,7 +42,7 @@ let major = scales[0].steps
 }
 
 @Test func basicPlayback() {
-    var s = HiChordState()
+    var s = RSplexState()
     #expect(s.render() == nil)
     s.press(degree: 0)
     #expect(s.render()!.notes == [60, 64, 67])
@@ -55,7 +55,7 @@ let major = scales[0].steps
 }
 
 @Test func heldModifierRevertsOnRelease() {
-    var s = HiChordState()
+    var s = RSplexState()
     s.press(degree: 0); s.press(mod: 1)
     #expect(s.render()!.name == "C7")
     s.release(mod: 1)
@@ -63,7 +63,7 @@ let major = scales[0].steps
 }
 
 @Test func octaveShiftMovesByOctaveAndClamps() {
-    var s = HiChordState()
+    var s = RSplexState()
     s.press(degree: 0)
     s.shiftOctave(1)
     #expect(s.render()!.notes == [72, 76, 79])
@@ -75,7 +75,7 @@ let major = scales[0].steps
 }
 
 @Test func octaveShiftWorksWithVoiceLeading() {
-    var s = HiChordState()
+    var s = RSplexState()
     s.voiceLeading = true
     s.press(degree: 0)
     let before = s.render()!.notes
@@ -86,7 +86,7 @@ let major = scales[0].steps
 }
 
 @Test func keyChangesStayInOneRegister() {
-    var s = HiChordState()
+    var s = RSplexState()
     s.press(degree: 0)
     s.shiftKey(5)   // F
     #expect(s.render()!.notes.first == 65)
@@ -99,7 +99,7 @@ let major = scales[0].steps
 }
 
 @Test func bassModes() {
-    var s = HiChordState()
+    var s = RSplexState()
     s.press(degree: 0)
     s.cycleBass()   // ROOT
     #expect(s.render()!.notes == [60, 64, 67, 36])

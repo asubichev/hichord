@@ -1,6 +1,6 @@
 import Cocoa
 import AVFoundation
-import HiChordCore
+import rSplexCore
 
 let degreeKeys = ["a", "s", "d", "f", "g", "h", "j"]
 let modKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
@@ -55,7 +55,7 @@ final class Synth {
 
 final class ChordView: NSView {
     let synth = Synth()
-    var state = HiChordState()
+    var state = RSplexState()
     var display = "—"
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
@@ -134,7 +134,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        window.title = "HiChord"
+        window.title = "rSplex"
         window.contentView = view
         window.delegate = self
         window.center()

@@ -1,8 +1,8 @@
-# HiChord (keyboard)
+# rSplex
 
-A HiChord-style chord synth for macOS, played from the computer keyboard.
+A chord synth for macOS, played from the computer keyboard.
 
-    swift run -c release HiChord
+    swift run -c release rSplex
     swift test
 
 | Keys | Action |
@@ -18,8 +18,8 @@ A HiChord-style chord synth for macOS, played from the computer keyboard.
 
 ## Download
 
-Grab **HiChord.zip** from the [latest release](https://github.com/asubichev/hichord/releases/latest), unzip, and double-click
-`HiChord.app`. The first time, right-click it → **Open** → **Open** (the app isn't notarized). If there's no Open option,
+Grab **rSplex.zip** from the [latest release](https://github.com/asubichev/rSplex/releases/latest), unzip, and double-click
+`rSplex.app`. The first time, right-click it → **Open** → **Open** (the app isn't notarized). If there's no Open option,
 use System Settings → Privacy & Security → **Open Anyway**.
 
 ## Releasing
