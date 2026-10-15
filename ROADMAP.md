@@ -14,9 +14,8 @@ independently (today the whole chord shares one envelope). This release builds b
 
 - **Octave range −2…+2** (was −1…+2).
 - **Shift+Tab** cycles scales backwards.
-- **Hold-to-lock** (new idea, not a HiChord feature — HiChord's "chord lock" permanently rebinds a button, which is
-  different). See spec below.
-- **Engine rewrite:** per-note voices with ADSR. Adds HiChord's envelope presets (LONG, SHORT, SWELL, PLUCK, TOUCH,
+- **Hold-to-lock** (distinct from per-button chord lock, which permanently rebinds a button). See spec below.
+- **Engine rewrite:** per-note voices with ADSR. Adds envelope presets (LONG, SHORT, SWELL, PLUCK, TOUCH,
   SUSTAIN) almost for free.
 - **Transport:** BPM (40–300) and tap tempo, clocked in the audio thread so timing is sample-accurate.
 - Tests for the clock, note on/off scheduling, and the lock state machine.
@@ -37,7 +36,7 @@ independently (today the whole chord shares one envelope). This release builds b
 
 ## v1.2 — Arpeggiator
 
-Modeled on HiChord's Arpeggio mode:
+Arpeggio mode:
 - Patterns: Up, Down, Up/Down, Down/Up, Random, Fingerpick.
 - Rates: 1/1, 1/2, 1/4, 1/8 (default), 1/16, 1/16T, 1/32, Swing 8th, Swing 16th — synced to BPM.
 - Gate length tied to release time, as on the device.
@@ -72,8 +71,8 @@ MIDI device, so this is CoreMIDI output to a chosen destination.
 ## Later candidates (pick deliberately, not all)
 
 - Presets: save/load a few slots.
-- HiChord chord lock (per-button permanent modifier) and the Extended / Chromatic modifier sets.
-- Pentatonic and Blues scales — first work out how HiChord derives 7 chords from 5–6-note scales.
+- Chord lock (per-button permanent modifier) and the Extended / Chromatic modifier sets.
+- Pentatonic and Blues scales — first decide how to derive 7 chords from 5–6-note scales.
 - Stereo spread.
 
 ## Out of scope

@@ -4,7 +4,7 @@ public let scales: [(name: String, steps: [Int])] = [
     ("Harmonic Minor", [0, 2, 3, 5, 7, 8, 11]), ("Melodic Minor", [0, 2, 3, 5, 7, 9, 11]),
     ("Dorian", [0, 2, 3, 5, 7, 9, 10]), ("Mixolydian", [0, 2, 4, 5, 7, 9, 10]),
     ("Lydian", [0, 2, 4, 6, 7, 9, 11])]
-/// Number-row modifiers, modeled on HiChord's default joystick directions.
+/// Number-row modifiers, held while a chord key is down.
 public let modLabels = ["M/m flip", "7", "maj7/m7", "add9", "sus4", "6/sus2", "m/dim", "aug", "sus2", "5"]
 public let bassModes = ["OFF", "ROOT", "SLASH"]
 public let octaveRange = -1...2
@@ -76,7 +76,7 @@ public func leadVoicing(_ notes: [Int], from prev: [Int]) -> [Int] {
 }
 
 /// All player state; the UI forwards key events here and plays whatever `render()` returns.
-public struct HiChordState {
+public struct RSplexState {
     public var key = 0, scaleIdx = 0, inversion = 0, bassMode = 0
     public var voiceLeading = false
     public private(set) var octave = 0

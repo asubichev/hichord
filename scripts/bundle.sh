@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build a universal HiChord.app and zip it. Usage: scripts/bundle.sh <version>
+# Build a universal rSplex.app and zip it. Usage: scripts/bundle.sh <version>
 set -euo pipefail
 VERSION="${1:?usage: scripts/bundle.sh <version>}"
 cd "$(dirname "$0")/.."
@@ -9,17 +9,17 @@ for ARCH in arm64 x86_64; do
     swift build -c release --triple "$ARCH-apple-macosx13.0" --scratch-path ".build/$ARCH"
 done
 
-rm -rf dist && mkdir -p dist/HiChord.app/Contents/MacOS
-lipo -create -output dist/HiChord.app/Contents/MacOS/HiChord \
-    .build/arm64/release/HiChord .build/x86_64/release/HiChord
-cat > dist/HiChord.app/Contents/Info.plist <<PLIST
+rm -rf dist && mkdir -p dist/rSplex.app/Contents/MacOS
+lipo -create -output dist/rSplex.app/Contents/MacOS/rSplex \
+    .build/arm64/release/rSplex .build/x86_64/release/rSplex
+cat > dist/rSplex.app/Contents/Info.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleExecutable</key><string>HiChord</string>
-    <key>CFBundleIdentifier</key><string>com.asubichev.hichord</string>
-    <key>CFBundleName</key><string>HiChord</string>
+    <key>CFBundleExecutable</key><string>rSplex</string>
+    <key>CFBundleIdentifier</key><string>com.asubichev.rsplex</string>
+    <key>CFBundleName</key><string>rSplex</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>${VERSION}</string>
     <key>CFBundleVersion</key><string>${VERSION}</string>
@@ -28,6 +28,6 @@ cat > dist/HiChord.app/Contents/Info.plist <<PLIST
 </dict>
 </plist>
 PLIST
-codesign --force --deep -s - dist/HiChord.app
-ditto -c -k --keepParent dist/HiChord.app dist/HiChord.zip
-echo "Built dist/HiChord.zip ($VERSION)"
+codesign --force --deep -s - dist/rSplex.app
+ditto -c -k --keepParent dist/rSplex.app dist/rSplex.zip
+echo "Built dist/rSplex.zip ($VERSION)"

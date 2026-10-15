@@ -31,6 +31,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v$VERSION" dist/HiChord.zip \
-            --title "HiChord $VERSION" --generate-notes \
-            --notes "Download **HiChord.zip**, unzip, then right-click HiChord.app → Open the first time (it's not notarized). Works on Apple Silicon and Intel Macs, macOS 13+."
+          gh release create "v$VERSION" dist/rSplex.zip \
+            --title "rSplex $VERSION" --generate-notes \
+            --notes "Download **rSplex.zip**, unzip, then right-click rSplex.app → Open the first time (it's not notarized). Works on Apple Silicon and Intel Macs, macOS 13+."
