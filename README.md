@@ -7,14 +7,15 @@ A chord synth for macOS, played from the computer keyboard.
 
 | Keys | Action |
 |---|---|
-| A S D F G H J | hold to play the 7 diatonic chords of the key |
+| A S D F G H J | hold to play the 7 diatonic chords of the key; hold 4 s to lock (any key press unlocks) |
 | 1–0 | hold to modify: M/m flip, 7, maj7/m7, add9, sus4, 6/sus2, m/dim, aug, sus2, 5 |
 | ← / → | key |
-| ↑ / ↓ | octave (-1 to +2) |
-| Tab | scale |
+| ↑ / ↓ | octave (-2 to +2) |
+| Tab / Shift+Tab | next / previous scale |
 | Z | inversion |
 | V | voice leading on/off |
 | B | bass: OFF / ROOT / SLASH (hold the bass chord key, then the chord) |
+| L | hold-to-lock on/off |
 
 ## Download
 
