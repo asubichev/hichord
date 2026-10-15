@@ -92,6 +92,8 @@ public struct RSplexState {
     public private(set) var held: [Int] = []   // scale degrees, in press order
     public private(set) var mods: [Int] = []   // modifiers, in press order
     private var lastVoicing: [Int] = []
+    /// What `lastVoicing` was voiced from; re-rendering the same chord reuses it instead of re-voicing.
+    private var lastSource: (base: [Int], voiceLeading: Bool, inversion: Int)?
 
     public init() {}
 
@@ -125,8 +127,14 @@ public struct RSplexState {
         let c = chord(degree: deg, key: key, scale: scale, mod: mods.last)
         let root = rootMidi(degree: deg)
         let base = c.iv.map { root + $0 }
-        let voicing = voiceLeading ? leadVoicing(base, from: lastVoicing) : invert(base, inversion)
+        let voicing: [Int]
+        if let src = lastSource, src.base == base, src.voiceLeading == voiceLeading, src.inversion == inversion {
+            voicing = lastVoicing   // same chord still sounding: a held chord never re-voices itself
+        } else {
+            voicing = voiceLeading ? leadVoicing(base, from: lastVoicing) : invert(base, inversion)
+        }
         lastVoicing = voicing
+        lastSource = (base, voiceLeading, inversion)
         var notes = voicing, name = c.name
         if bassMode == 1 || (bassMode == 2 && held.count < 2) {
             notes.append(root - 24)

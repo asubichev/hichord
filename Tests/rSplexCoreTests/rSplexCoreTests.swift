@@ -136,3 +136,21 @@ let major = scales[0].steps
         for chordNotes in loops.joined() { #expect(chordNotes.allSatisfy { (52...84).contains($0) }, "\(chordNotes)") }
     }
 }
+
+@Test func heldChordKeepsItsVoicingWhenAnEarlierKeyIsReleased() {
+    // Every pair of chords, in every key: hold A, hold B, release A — B must not re-voice.
+    for key in 0..<12 {
+        for a in 0..<7 {
+            for b in 0..<7 where b != a {
+                var s = RSplexState()
+                s.voiceLeading = true
+                s.shiftKey(key)
+                s.press(degree: a); _ = s.render()
+                s.press(degree: b)
+                let before = s.render()!.notes
+                s.release(degree: a)
+                #expect(s.render()!.notes == before, "key \(key): \(a) then \(b)")
+            }
+        }
+    }
+}
