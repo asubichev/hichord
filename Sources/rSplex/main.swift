@@ -53,6 +53,8 @@ final class ChordView: NSView {
     var lockedAt: Double?
     var unlocked: (degree: Int, at: Double)?
     var timer: Timer?
+    /// The bundle carries the release version; a plain `swift build` run has none.
+    let version = "v" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
     static let pulseSeconds = 0.25, fadeSeconds = 0.3
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
@@ -191,6 +193,8 @@ final class ChordView: NSView {
         }
         "Hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
+        let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
+        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 263), withAttributes: faint)
     }
 
     func drawLockBadge(at p: NSPoint, size: CGFloat, alpha: Double) {
@@ -212,9 +216,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-        // The bundle carries the release version; a plain `swift build` run has none.
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        window.title = "rSplex \(version ?? "dev")"
+        window.title = "rSplex"
         window.contentView = view
         window.delegate = self
         window.center()
