@@ -92,6 +92,8 @@ public func leadVoicing(_ notes: [Int], from prev: [Int]) -> [Int] {
 public struct Output: Equatable {
     public var notes: [Int]
     public var name: String
+    /// The added bass note (also last in `notes`), if bass is on.
+    public var bass: Int? = nil
 }
 
 /// A chord that keeps sounding after its keys are released, until any key is pressed.
@@ -205,6 +207,6 @@ public struct RSplexState {
             notes.append(bassNote(rootMidi(degree: held[0]) - 24))
             name += "/" + noteNames[(key + scale[held[0]]) % 12]
         }
-        return Output(notes: notes, name: name)
+        return Output(notes: notes, name: name, bass: bassMode == 0 ? nil : notes.last)
     }
 }

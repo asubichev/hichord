@@ -94,9 +94,12 @@ final class ChordView: NSView {
         let notes = Set(out?.notes ?? [])
         let adsr = envelopePresets[envelopeIdx].adsr
         // ARP plays the chord's notes one at a time; CHORD+ARP keeps the chord and arpeggiates an octave above it.
-        let pad = arpMode == 1 ? [] : notes
-        let arp = arpMode == 0 || notes.isEmpty ? nil
-            : Arp(notes: ArpNotes(notes.map { $0 + (arpMode == 2 ? 12 : 0) }), pattern: arpPattern, rate: arpRate, adsr: adsr)
+        // The bass note stays out of the arp and holds underneath, so turning bass on doesn't change the pattern.
+        let bass = out?.bass.map { Set([$0]) } ?? []
+        let pad = arpMode == 1 ? bass : notes
+        let arpNotes = notes.subtracting(bass)
+        let arp = arpMode == 0 || arpNotes.isEmpty ? nil
+            : Arp(notes: ArpNotes(arpNotes.map { $0 + (arpMode == 2 ? 12 : 0) }), pattern: arpPattern, rate: arpRate, adsr: adsr)
         let (off, on) = chordDiff(from: sounding, to: pad)
         let gain = 3 / Double(max(3, pad.count))
         var events: [VoiceEvent] = off.map { .noteOff($0) } + on.map { .noteOn($0, adsr, gain: gain) }
