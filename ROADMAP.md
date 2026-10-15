@@ -38,9 +38,9 @@ independently (today the whole chord shares one envelope). This release builds b
 
 - Up to 8 steps (K switches 4 / 8); each step stores degree, number-row modifier, and slash bass. Notes are worked
   out at playback, so key, scale, octave, voicing, and bass changes apply to the whole sequence.
-- Record mode (Q): a chord key writes the step at the cursor and the step follows whatever you play while holding it,
-  number-row included; the cursor moves on when the chord key is released. `-` rest, Delete clears the previous step.
-- Space play/stop, step length 1/4 to 2 bars (U), tempo `[` `]` and tap tempo `\`, sample-accurate timing.
+- Shift + chord records: it writes the step at the cursor and the step follows whatever you play while holding it,
+  number-row included; the cursor moves on when the chord key is released. `-` rest, Shift+Delete clears the step at the cursor and moves left. Shift+←/→ move the cursor.
+- Space play/stop, step length 1/4 to 2 bars (Shift+↑ shorter, Shift+↓ longer), tempo `[` `]` and tap tempo `\`, sample-accurate timing.
 - Live playing works over a running sequence without cutting its notes.
 - Sits top right, above the settings line. No saving: the sequence lives until you quit, by design.
 
@@ -91,5 +91,6 @@ hardware-only features (battery, USB modes, firmware).
 
 ## Keyboard layout
 
-Taken: `A`–`J` chords, `1`–`0` modifiers, arrows, Tab, `Z` `V` `B` `L` `E`, and for the sequencer Space `Q` `,` `.`
-`-` Delete `K` `U` `[` `]` `\`. The arp draft uses `R` `T` `Y`.
+Taken: `A`–`J` chords, `1`–`0` modifiers, arrows, Tab, `Z` `V` `B` `L` `E`, and for the sequencer Space `-` `K`
+`[` `]` `\`. Shift is the sequencer modifier: Shift + chord records, Shift + arrows move the cursor and change step
+length, Shift+Delete deletes. Prefer Shift keychords over new single keys. The arp draft uses `R` `T` `Y`.

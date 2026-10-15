@@ -19,7 +19,6 @@ public struct Sequencer: Equatable {
     public private(set) var steps: [SeqStep?] = Array(repeating: nil, count: 8)
     public private(set) var cursor = 0
     public var stepLengthIdx = 2
-    public var recording = false
 
     public init() {}
 
@@ -42,10 +41,10 @@ public struct Sequencer: Equatable {
         steps[i] = step
     }
 
-    /// Steps back and clears that step, like Backspace in text.
-    public mutating func backspace() {
-        cursor = (cursor + length - 1) % length
+    /// Clears the step at the cursor to a rest and moves left one (stopping at the first step). Other steps stay put.
+    public mutating func deleteAtCursor() {
         steps[cursor] = nil
+        cursor = max(0, cursor - 1)
     }
 
     public mutating func moveCursor(_ delta: Int) { cursor = ((cursor + delta) % length + length) % length }
@@ -57,12 +56,10 @@ public struct Sequencer: Equatable {
         cursor = min(cursor, n - 1)
     }
 
-    public mutating func cycleStepLength(_ delta: Int) {
-        stepLengthIdx = (stepLengthIdx + delta + stepLengths.count) % stepLengths.count
+    /// Moves through `stepLengths` (shorter → longer), stopping at either end.
+    public mutating func changeStepLength(_ delta: Int) {
+        stepLengthIdx = min(stepLengths.count - 1, max(0, stepLengthIdx + delta))
     }
-
-    /// Clears every step and puts the cursor back at the start.
-    public mutating func clear() { steps = Array(repeating: nil, count: length); cursor = 0 }
 }
 
 extension RSplexState {

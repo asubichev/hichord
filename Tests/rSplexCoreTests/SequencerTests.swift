@@ -16,13 +16,22 @@ import Testing
     #expect(s.steps[0] == SeqStep(degree: 0, slash: 4) && s.cursor == 1)
 }
 
-@Test func backspaceClearsPreviousStep() {
+@Test func deleteClearsCurrentStepAndMovesLeft() {
     var s = Sequencer()
-    s.write(SeqStep(degree: 0)); s.write(SeqStep(degree: 3))
-    s.backspace()
-    #expect(s.cursor == 1 && s.steps[1] == nil && s.steps[0] != nil)
-    s.backspace(); s.backspace()
-    #expect(s.cursor == 7)                    // wraps to the last step
+    s.write(SeqStep(degree: 0)); s.write(SeqStep(degree: 3)); s.write(SeqStep(degree: 4))
+    s.moveCursor(-1)                          // on step 3 (degree 4)
+    s.deleteAtCursor()
+    #expect(s.steps[2] == nil && s.steps[1] == SeqStep(degree: 3) && s.cursor == 1)
+    s.deleteAtCursor(); s.deleteAtCursor()
+    #expect(s.cursor == 0 && s.isEmpty)       // stops at the first step
+}
+
+@Test func stepLengthStopsAtTheEnds() {
+    var s = Sequencer()
+    s.changeStepLength(-5)
+    #expect(s.stepLengthIdx == 0)
+    s.changeStepLength(9)
+    #expect(s.stepLengthIdx == stepLengths.count - 1)
 }
 
 @Test func resizeByFourWithinLimits() {

@@ -4,8 +4,11 @@ import rSplexCore
 
 let degreeKeys = ["a", "s", "d", "f", "g", "h", "j"]
 /// Keys that only change sound, tempo, or the sequencer; pressing them leaves a lock in place.
-let lockSafeChars: Set<String> = ["e", "q", ",", ".", "-", "k", "u", "[", "]", "\\"]
-let lockSafeKeyCodes: Set<UInt16> = [49, 51]   // Space, Delete
+let lockSafeChars: Set<String> = ["e", "k", "[", "]", "\\"]
+let lockSafeKeyCodes: Set<UInt16> = [49, 27]   // Space, -
+let shiftLockSafeKeyCodes: Set<UInt16> = [123, 124, 125, 126, 51]   // Shift + arrows, Shift+Delete
+/// Number row 1…0 by key code, so Shift (which turns 1 into !) doesn't change which modifier a key is.
+let modKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25, 29]
 let modKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
 
 /// Hosts the VoiceEngine in the audio callback. The UI queues events; the callback drains them at the start of
@@ -127,38 +130,38 @@ final class ChordView: NSView {
 
     override func keyDown(with e: NSEvent) {
         let c = e.charactersIgnoringModifiers?.lowercased() ?? ""
-        let repeatable = [123, 124, 125, 126, 48, 33, 30, 43, 47, 51].contains(e.keyCode)   // arrows, Tab, [ ] , . Delete
+        let shift = e.modifierFlags.contains(.shift)
+        let repeatable = [123, 124, 125, 126, 48, 33, 30, 51].contains(e.keyCode)   // arrows, Tab, [ ], Delete
         if e.isARepeat && !repeatable { return }
-        // Any key press breaks a lock; the press then does its normal job.
+        // Any key press breaks a lock, except sound, tempo, and sequencer keys; the press then does its normal job.
         let degree = degreeKeys.firstIndex(of: c)
         let lockSafe = lockSafeChars.contains(c) || lockSafeKeyCodes.contains(e.keyCode)
+            || (shift && shiftLockSafeKeyCodes.contains(e.keyCode))
         if !lockSafe, let d = state.breakLock(pressingDegree: degree) { unlocked = (d, now); lockedAt = nil }
-        let shift = e.modifierFlags.contains(.shift)
         switch e.keyCode {
-        case 123: state.shiftKey(-1)
-        case 124: state.shiftKey(1)
-        case 125: state.shiftOctave(-1)
-        case 126: state.shiftOctave(1)
-        case 48: e.modifierFlags.contains(.shift) ? state.previousScale() : state.nextScale()
+        // Shift + arrows drive the sequencer: ←/→ move the cursor, ↑ shorter steps (faster), ↓ longer.
+        case 123: shift ? seq.moveCursor(-1) : state.shiftKey(-1)
+        case 124: shift ? seq.moveCursor(1) : state.shiftKey(1)
+        case 125: shift ? seq.changeStepLength(1) : state.shiftOctave(-1)
+        case 126: shift ? seq.changeStepLength(-1) : state.shiftOctave(1)
+        case 48: shift ? state.previousScale() : state.nextScale()
         case 14:       // E envelope preset
             envelopeIdx = (envelopeIdx + 1) % envelopePresets.count
         case 49: playing ? stopSequence() : startSequence()     // Space
-        case 51: shift ? seq.clear() : seq.backspace()           // Delete
+        case 51: if shift { seq.deleteAtCursor(); recSlot = nil }   // Shift+Delete
+        case 27: seq.write(nil); recSlot = nil                   // - rest
         default:
             if let d = degree {
                 state.press(degree: d)
-                if seq.recording { record(degree: d) }
+                // Shift + chord records; while a recorded chord is held, more chord keys join it (slash bass).
+                if shift || recSlot != nil { record(degree: d) }
             }
-            else if let m = modKeys.firstIndex(of: c) { state.press(mod: m) }
+            else if let m = modKeyCodes.firstIndex(of: e.keyCode) { state.press(mod: m) }
             else if c == "z" { state.cycleInversion() }
             else if c == "v" { state.voiceLeading.toggle() }
             else if c == "b" { state.cycleBass() }
             else if c == "l" { state.lockEnabled.toggle() }
-            else if c == "q" { seq.recording.toggle(); recSlot = nil }
-            else if c == "," || c == "." { seq.moveCursor(c == "." ? 1 : -1) }
-            else if c == "-" { if seq.recording { seq.write(nil); recSlot = nil } }
             else if c == "k" { seq.resize(grow: seq.length < Sequencer.maxSteps) }
-            else if c == "u" { seq.cycleStepLength(shift ? -1 : 1) }
             else if c == "[" || c == "]" { setBPM(bpm.rounded() + (c == "]" ? 1 : -1)) }
             else if c == "\\" { if let b = tapTempo.tap(at: now) { setBPM(b.rounded()) } }
             else { update(); super.keyDown(with: e); return }
@@ -169,7 +172,7 @@ final class ChordView: NSView {
     override func keyUp(with e: NSEvent) {
         guard let c = e.charactersIgnoringModifiers?.lowercased() else { return }
         if let d = degreeKeys.firstIndex(of: c) { state.release(degree: d); update() }
-        else if let m = modKeys.firstIndex(of: c) { state.release(mod: m); update() }
+        else if let m = modKeyCodes.firstIndex(of: e.keyCode) { state.release(mod: m); update() }
     }
 
     func setBPM(_ b: Double) {
@@ -251,7 +254,7 @@ final class ChordView: NSView {
             let x = 24 + display.size(withAttributes: big).width
             drawLockBadge(at: NSPoint(x: x, y: 26), size: 20, alpha: 1)
         }
-        let seqInfo = "Seq \(playing ? "▶" : "■") \(seq.length) × \(stepLengths[seq.stepLengthIdx].name)   \(Int(bpm)) BPM\(seq.recording ? "   ● REC" : "")"
+        let seqInfo = "Seq \(playing ? "▶" : "■") \(seq.length) × \(stepLengths[seq.stepLengthIdx].name)   \(Int(bpm)) BPM\(recSlot != nil ? "   ● REC" : "")"
         "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)   \(seqInfo)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
         let settings = "Env \(envelopePresets[envelopeIdx].name)   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
             + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])   Lock \(s.lockEnabled ? "ON" : "OFF")"
@@ -309,7 +312,7 @@ final class ChordView: NSView {
         drawSequence()
         "Hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
-        "Space play/stop · Q record · , . cursor · - rest · ⌫ delete (⇧⌫ clear) · K 4/8 steps · U step length · [ ] tempo · \\ tap"
+        "Space play/stop · ⇧+chord record · ⇧←/→ step · ⇧↑/↓ speed · ⇧⌫ delete · - rest · K 4/8 steps · [ ] tempo · \\ tap"
             .draw(at: NSPoint(x: 20, y: 280), withAttributes: small)
         let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
         version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 281), withAttributes: faint)
@@ -334,8 +337,8 @@ final class ChordView: NSView {
             "\(i + 1)".draw(at: NSPoint(x: rect.minX + 4, y: rect.maxY - 16),
                             withAttributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: ink.withAlphaComponent(0.6)])
             if i == seq.cursor {
-                (seq.recording ? NSColor.systemRed : NSColor(white: 0.7, alpha: 1)).setStroke()
-                path.lineWidth = seq.recording ? 2.5 : 1.5
+                (recSlot != nil ? NSColor.systemRed : NSColor(white: 0.7, alpha: 1)).setStroke()
+                path.lineWidth = recSlot != nil ? 2.5 : 1.5
                 path.stroke()
             }
         }
