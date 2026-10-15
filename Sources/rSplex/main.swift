@@ -76,6 +76,8 @@ final class ChordView: NSView {
     /// Steps scheduled but maybe not reached yet, so the playhead shows what's actually sounding.
     var playheadQueue: [(beat: Double, idx: Int)] = []
     var playhead: Int?
+    /// The step being recorded; it follows the held chord (modifier, slash bass) until that chord key is released.
+    var recSlot: Int?
     /// How far ahead steps are handed to the audio thread, which then plays them on the exact sample.
     static let lookaheadSeconds = 0.12
     /// Lock animation: when the current lock started (pulse), and the degree/time of the last unlock (badge fade).
@@ -108,6 +110,7 @@ final class ChordView: NSView {
 
     func update() {
         let wasLocked = state.lock != nil
+        followRecording()
         let out = state.render(now: now)
         display = out?.name ?? "—"
         let next = Set(out?.notes ?? [])
@@ -150,10 +153,10 @@ final class ChordView: NSView {
             else if c == "v" { state.voiceLeading.toggle() }
             else if c == "b" { state.cycleBass() }
             else if c == "l" { state.lockEnabled.toggle() }
-            else if c == "q" { seq.recording.toggle() }
+            else if c == "q" { seq.recording.toggle(); recSlot = nil }
             else if c == "," || c == "." { seq.moveCursor(c == "." ? 1 : -1) }
-            else if c == "-" { if seq.recording { seq.write(nil) } }
-            else if c == "k" { seq.resize(grow: !shift) }
+            else if c == "-" { if seq.recording { seq.write(nil); recSlot = nil } }
+            else if c == "k" { seq.resize(grow: seq.length < Sequencer.maxSteps) }
             else if c == "u" { seq.cycleStepLength(shift ? -1 : 1) }
             else if c == "[" || c == "]" { setBPM(bpm.rounded() + (c == "]" ? 1 : -1)) }
             else if c == "\\" { if let b = tapTempo.tap(at: now) { setBPM(b.rounded()) } }
@@ -174,14 +177,23 @@ final class ChordView: NSView {
     }
 
     /// Records the chord just pressed at the cursor. In SLASH bass, a second key held over the first turns the
-    /// step just written into a slash chord, since holding the bass key already wrote it.
+    /// step being recorded into a slash chord, since holding the bass key already wrote it.
     func record(degree d: Int) {
-        let mod = state.mods.last
-        if state.bassMode == 2, state.held.count >= 2 {
-            seq.rewriteLast(SeqStep(degree: d, mod: mod, slash: state.held[0]))
+        if state.bassMode == 2, state.held.count >= 2, let slot = recSlot {
+            seq.rewrite(at: slot, SeqStep(degree: d, mod: state.mods.last, slash: state.held[0]))
         } else {
-            seq.write(SeqStep(degree: d, mod: mod))
+            recSlot = seq.write(SeqStep(degree: d, mod: state.mods.last))
         }
+    }
+
+    /// Keeps the step being recorded equal to what's sounding: pressing or releasing a modifier while the chord is
+    /// held rewrites it, so the step stores whatever was played last.
+    func followRecording() {
+        guard let slot = recSlot else { return }
+        guard let d = state.held.last else { recSlot = nil; return }
+        guard seq.steps[slot]?.degree == d else { return }
+        let slash = state.bassMode == 2 && state.held.count >= 2 ? state.held[0] : nil
+        seq.rewrite(at: slot, SeqStep(degree: d, mod: state.mods.last, slash: slash))
     }
 
     func startSequence() {
@@ -291,28 +303,29 @@ final class ChordView: NSView {
             modKeys[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 4), withAttributes: keyAttrs)
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: labelAttrs)
         }
-        drawSequence(top: 262)
+        drawSequence()
         "Hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
-            .draw(at: NSPoint(x: 20, y: 322), withAttributes: small)
-        "Space play/stop · Q record · , . cursor · - rest · ⌫ delete (⇧⌫ clear) · K/⇧K ±4 steps · U step length · [ ] tempo · \\ tap"
-            .draw(at: NSPoint(x: 20, y: 340), withAttributes: small)
+            .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
+        "Space play/stop · Q record · , . cursor · - rest · ⌫ delete (⇧⌫ clear) · K 4/8 steps · U step length · [ ] tempo · \\ tap"
+            .draw(at: NSPoint(x: 20, y: 280), withAttributes: small)
         let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
-        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 341), withAttributes: faint)
+        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 281), withAttributes: faint)
     }
 
-    /// One box per step: the chord (or – for a rest), orange at the playhead, with an outline cursor (red while recording).
-    func drawSequence(top: CGFloat) {
-        let gap: CGFloat = 4
-        let w = (bounds.width - 40 - CGFloat(Sequencer.maxSteps - 1) * gap) / CGFloat(Sequencer.maxSteps)
+    /// Top right, above the settings: one box per step with the chord (or – for a rest), orange at the playhead,
+    /// with an outline cursor (red while recording). Right-aligned, so 4 steps sit where the last 4 of 8 would.
+    func drawSequence() {
+        let gap: CGFloat = 4, w: CGFloat = 52, top: CGFloat = 12
+        let left = bounds.width - 20 - CGFloat(seq.length) * (w + gap) + gap
         for i in 0..<seq.length {
-            let rect = NSRect(x: 20 + CGFloat(i) * (w + gap), y: top, width: w, height: 44)
+            let rect = NSRect(x: left + CGFloat(i) * (w + gap), y: top, width: w, height: 46)
             let path = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
             let atHead = playhead == i
-            (atHead ? NSColor.systemOrange : NSColor(white: i % 4 == 0 ? 0.27 : 0.22, alpha: 1)).setFill()
+            (atHead ? NSColor.systemOrange : NSColor(white: 0.22, alpha: 1)).setFill()
             path.fill()
             let ink = atHead ? NSColor.black : NSColor.white
             let name = seq.steps[i].map { stepName($0, key: state.key, scale: state.scale) } ?? "–"
-            let size: CGFloat = name.count > 4 ? 10 : 13
+            let size: CGFloat = name.count > 5 ? 10 : name.count > 3 ? 12 : 14
             name.draw(at: NSPoint(x: rect.minX + 4, y: rect.minY + 6),
                       withAttributes: [.font: NSFont.boldSystemFont(ofSize: size), .foregroundColor: ink])
             "\(i + 1)".draw(at: NSPoint(x: rect.minX + 4, y: rect.maxY - 16),
@@ -342,7 +355,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     let view = ChordView()
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 362),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 308),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "rSplex"
         window.contentView = view

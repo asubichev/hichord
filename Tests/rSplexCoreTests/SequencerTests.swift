@@ -9,10 +9,10 @@ import Testing
     #expect(s.steps[0] == nil && s.steps[1] == SeqStep(degree: 1) && s.cursor == 1)
 }
 
-@Test func slashRewritesTheStepJustWritten() {
+@Test func rewriteReplacesWithoutMovingTheCursor() {
     var s = Sequencer()
-    s.write(SeqStep(degree: 4))
-    s.rewriteLast(SeqStep(degree: 0, slash: 4))
+    let i = s.write(SeqStep(degree: 4))
+    s.rewrite(at: i, SeqStep(degree: 0, slash: 4))
     #expect(s.steps[0] == SeqStep(degree: 0, slash: 4) && s.cursor == 1)
 }
 
@@ -27,11 +27,11 @@ import Testing
 
 @Test func resizeByFourWithinLimits() {
     var s = Sequencer()
-    s.resize(grow: true); s.resize(grow: true); s.resize(grow: true)
-    #expect(s.length == 16)
+    s.resize(grow: true)
+    #expect(s.length == 8)                    // 8 is the most
     s.moveCursor(-1)
-    #expect(s.cursor == 15)
-    s.resize(grow: false); s.resize(grow: false); s.resize(grow: false); s.resize(grow: false)
+    #expect(s.cursor == 7)
+    s.resize(grow: false); s.resize(grow: false)
     #expect(s.length == 4 && s.cursor == 3)
 }
 

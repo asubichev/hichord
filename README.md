@@ -13,11 +13,11 @@ A chord synth for macOS, played from the computer keyboard.
 | ↑ / ↓ | octave (-2 to +2) |
 | Tab / Shift+Tab | next / previous scale |
 | Space | sequencer play / stop |
-| Q | record on/off: chord keys write steps at the cursor (SLASH bass: hold the bass key, then the chord) |
+| Q | record on/off: each chord key writes a step at the cursor; the step keeps what you last play while holding it, number-row modifier included (SLASH bass: hold the bass key, then the chord) |
 | , / . | move the cursor |
 | - | rest (while recording) |
 | Delete / Shift+Delete | clear the previous step / clear the whole sequence |
-| K / Shift+K | add / remove 4 steps (4–16) |
+| K | 4 or 8 steps |
 | U / Shift+U | step length: 1/4, 1/2, 1 bar, 2 bars |
 | [ / ] | tempo −1 / +1 BPM (40–300) |
 | \\ | tap tempo (3+ taps) |

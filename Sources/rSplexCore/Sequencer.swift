@@ -15,7 +15,7 @@ public let stepLengths: [(name: String, beats: Double)] = [("1/4", 1), ("1/2", 2
 
 /// The pattern and its editing cursor. Steps are nil for rests.
 public struct Sequencer: Equatable {
-    public static let maxSteps = 16, minSteps = 4, growBy = 4
+    public static let maxSteps = 8, minSteps = 4, growBy = 4
     public private(set) var steps: [SeqStep?] = Array(repeating: nil, count: 8)
     public private(set) var cursor = 0
     public var stepLengthIdx = 2
@@ -27,16 +27,19 @@ public struct Sequencer: Equatable {
     public var stepBeats: Double { stepLengths[stepLengthIdx].beats }
     public var isEmpty: Bool { steps.allSatisfy { $0 == nil } }
 
-    /// Writes a chord (or a rest) at the cursor and moves to the next step, wrapping at the end.
-    public mutating func write(_ step: SeqStep?) {
-        steps[cursor] = step
+    /// Writes a chord (or a rest) at the cursor and moves to the next step, wrapping at the end. Returns the step written.
+    @discardableResult
+    public mutating func write(_ step: SeqStep?) -> Int {
+        let i = cursor
+        steps[i] = step
         cursor = (cursor + 1) % length
+        return i
     }
 
-    /// Turns the chord just written into a slash chord: in SLASH bass you hold the bass key first, which records it,
-    /// then press the chord key, which replaces that step instead of taking a new one.
-    public mutating func rewriteLast(_ step: SeqStep) {
-        steps[(cursor + length - 1) % length] = step
+    /// Replaces a step without moving the cursor, e.g. as the chord being recorded changes while it's held.
+    public mutating func rewrite(at i: Int, _ step: SeqStep) {
+        guard steps.indices.contains(i) else { return }
+        steps[i] = step
     }
 
     /// Steps back and clears that step, like Backspace in text.
