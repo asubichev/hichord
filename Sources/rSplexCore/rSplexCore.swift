@@ -41,7 +41,9 @@ public func chord(degree d: Int, key: Int, scale: [Int], mod: Int?) -> Chord {
         case 3: iv.append(14); suffix += "add9"
         case 4: iv = [0, 5, 7]; suffix = "sus4"
         case 5: if major { iv = [0, 4, 7, 9]; suffix = "6" } else { iv = [0, 2, 7]; suffix = "sus2" }
-        case 6: if major { iv = [0, 3, 7]; suffix = "m" } else { iv = [0, 3, 6]; suffix = "dim" }
+        case 6:
+            // Toggles between minor and diminished; a major chord goes to minor.
+            if third == 3 && fifth == 7 { iv = [0, 3, 6]; suffix = "dim" } else { iv = [0, 3, 7]; suffix = "m" }
         case 7: iv = [0, 4, 8]; suffix = "aug"
         case 8: iv = [0, 2, 7]; suffix = "sus2"
         default: iv = [0, 7, 12]; suffix = "5"
@@ -58,13 +60,20 @@ public func invert(_ notes: [Int], _ k: Int) -> [Int] {
 }
 
 /// Inversion/octave of `notes` closest to `prev`, measured note-to-nearest-note both ways.
+/// Each semitone the voicing's average pitch strays from `notes` (the chord's home position) costs `registerPull`,
+/// so steps that are each smoothest can't ratchet the register up or down over a progression.
+public let registerPull = 2.0
+
 public func leadVoicing(_ notes: [Int], from prev: [Int]) -> [Int] {
     guard !prev.isEmpty else { return notes }
-    func cost(_ a: [Int]) -> Int {
-        a.map { x in prev.map { abs($0 - x) }.min()! }.reduce(0, +)
+    func mean(_ a: [Int]) -> Double { Double(a.reduce(0, +)) / Double(a.count) }
+    let home = mean(notes)
+    func cost(_ a: [Int]) -> Double {
+        let motion = a.map { x in prev.map { abs($0 - x) }.min()! }.reduce(0, +)
             + prev.map { x in a.map { abs($0 - x) }.min()! }.reduce(0, +)
+        return Double(motion) + registerPull * abs(mean(a) - home)
     }
-    var best = notes, bestCost = Int.max
+    var best = notes, bestCost = Double.infinity
     for shift in [0, -12, 12] {
         for k in 0..<notes.count {
             let cand = invert(notes, k).map { $0 + shift }
@@ -83,6 +92,8 @@ public struct RSplexState {
     public private(set) var held: [Int] = []   // scale degrees, in press order
     public private(set) var mods: [Int] = []   // modifiers, in press order
     private var lastVoicing: [Int] = []
+    /// What `lastVoicing` was voiced from; re-rendering the same chord reuses it instead of re-voicing.
+    private var lastSource: (base: [Int], voiceLeading: Bool, inversion: Int)?
 
     public init() {}
 
@@ -116,8 +127,14 @@ public struct RSplexState {
         let c = chord(degree: deg, key: key, scale: scale, mod: mods.last)
         let root = rootMidi(degree: deg)
         let base = c.iv.map { root + $0 }
-        let voicing = voiceLeading ? leadVoicing(base, from: lastVoicing) : invert(base, inversion)
+        let voicing: [Int]
+        if let src = lastSource, src.base == base, src.voiceLeading == voiceLeading, src.inversion == inversion {
+            voicing = lastVoicing   // same chord still sounding: a held chord never re-voices itself
+        } else {
+            voicing = voiceLeading ? leadVoicing(base, from: lastVoicing) : invert(base, inversion)
+        }
         lastVoicing = voicing
+        lastSource = (base, voiceLeading, inversion)
         var notes = voicing, name = c.name
         if bassMode == 1 || (bassMode == 2 && held.count < 2) {
             notes.append(root - 24)
