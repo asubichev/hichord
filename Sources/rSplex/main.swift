@@ -102,9 +102,11 @@ final class ChordView: NSView {
         let small: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.lightGray]
         display.draw(at: NSPoint(x: 20, y: 12), withAttributes: big)
         let s = state
-        let status = "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   "
-            + "Inv \(s.voiceLeading ? "auto" : String(s.inversion))   VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])"
-        status.draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
+        "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
+        let settings = "Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
+            + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])"
+        let settingsWidth = settings.size(withAttributes: small).width
+        settings.draw(at: NSPoint(x: bounds.width - 20 - settingsWidth, y: 66), withAttributes: small)
         let gap: CGFloat = 8
         let w = (bounds.width - 40 - 6 * gap) / 7
         for d in 0..<7 {
