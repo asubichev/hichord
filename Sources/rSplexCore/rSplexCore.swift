@@ -7,7 +7,11 @@ public let scales: [(name: String, steps: [Int])] = [
 /// Number-row modifiers, held while a chord key is down.
 public let modLabels = ["M/m flip", "7", "maj7/m7", "add9", "sus4", "6/sus2", "m/dim", "aug", "sus2", "5"]
 public let bassModes = ["OFF", "ROOT", "SLASH"]
-public let octaveRange = -1...2
+public let octaveRange = -2...2
+/// Seconds a chord must sound unchanged before it locks.
+public let lockHoldSeconds = 4.0
+/// Lowest bass note (MIDI 28 = E1); lower bass notes are raised by octaves to stay audible.
+public let lowestBass = 28
 
 public struct Chord: Equatable {
     /// Semitones above C of the key's tonic octave (may exceed 11).
@@ -85,6 +89,17 @@ public func leadVoicing(_ notes: [Int], from prev: [Int]) -> [Int] {
 }
 
 /// All player state; the UI forwards key events here and plays whatever `render()` returns.
+public struct Output: Equatable {
+    public var notes: [Int]
+    public var name: String
+}
+
+/// A chord that keeps sounding after its keys are released, until any key is pressed.
+public struct Lock: Equatable {
+    public var degree: Int
+    public var output: Output
+}
+
 public struct RSplexState {
     public var key = 0, scaleIdx = 0, inversion = 0, bassMode = 0
     public var voiceLeading = false
@@ -95,17 +110,28 @@ public struct RSplexState {
     /// What `lastVoicing` was voiced from; re-rendering the same chord reuses it instead of re-voicing.
     private var lastSource: (base: [Int], voiceLeading: Bool, inversion: Int)?
 
+    public private(set) var lock: Lock?
+    /// When the currently sounding (unlocked) output started; the lock timer measures from here.
+    private var soundingSince: Double?
+    private var lastOutput: Output?
+    /// Degree pressed to break a lock; it plays normally but can't re-lock until released.
+    private var noLockDegree: Int?
+
     public init() {}
 
     public var scale: [Int] { scales[scaleIdx].steps }
 
     public mutating func press(degree d: Int) { held.removeAll { $0 == d }; held.append(d) }
-    public mutating func release(degree d: Int) { held.removeAll { $0 == d } }
+    public mutating func release(degree d: Int) {
+        held.removeAll { $0 == d }
+        if noLockDegree == d { noLockDegree = nil }
+    }
     public mutating func press(mod m: Int) { mods.removeAll { $0 == m }; mods.append(m) }
     public mutating func release(mod m: Int) { mods.removeAll { $0 == m } }
     public mutating func releaseAll() { held.removeAll(); mods.removeAll() }
     public mutating func shiftKey(_ delta: Int) { key = ((key + delta) % 12 + 12) % 12 }
     public mutating func nextScale() { scaleIdx = (scaleIdx + 1) % scales.count }
+    public mutating func previousScale() { scaleIdx = (scaleIdx + scales.count - 1) % scales.count }
     public mutating func cycleInversion() { inversion = (inversion + 1) % 3 }
     public mutating func cycleBass() { bassMode = (bassMode + 1) % bassModes.count }
 
@@ -116,13 +142,46 @@ public struct RSplexState {
         octave = new
     }
 
+    /// Call on every key press, before acting on it. Returns the degree that was locked, if a lock was broken.
+    /// Pressing the locked chord's own key replays it as an ordinary held chord that can't re-lock until released.
+    @discardableResult
+    public mutating func breakLock(pressingDegree d: Int? = nil) -> Int? {
+        guard let l = lock else { return nil }
+        lock = nil
+        soundingSince = nil
+        lastOutput = nil
+        if d == l.degree { noLockDegree = d }
+        return l.degree
+    }
+
+    /// 0…1 progress toward locking the sounding chord; nil when nothing could lock.
+    public func lockProgress(now: Double) -> Double? {
+        guard lock == nil, let since = soundingSince, let d = held.last, d != noLockDegree else { return nil }
+        return min(1, (now - since) / lockHoldSeconds)
+    }
+
     /// MIDI note of a degree's root. Keys above F# sit below middle C so every key stays in one register.
     public func rootMidi(degree d: Int) -> Int {
         60 + (key >= 6 ? key - 12 : key) + scale[d] + 12 * octave
     }
 
-    /// Notes to sound (chord voicing first, then any bass note) and the chord's display name; nil when nothing is held.
-    public mutating func render() -> (notes: [Int], name: String)? {
+    /// Notes to sound (chord voicing first, then any bass note) and the chord's display name; nil when silent.
+    /// `now` (seconds) drives hold-to-lock: a chord that sounds unchanged for `lockHoldSeconds` locks.
+    public mutating func render(now: Double = 0) -> Output? {
+        if let l = lock { return l.output }
+        guard let out = renderHeld() else { soundingSince = nil; lastOutput = nil; return nil }
+        if out != lastOutput { soundingSince = now; lastOutput = out }
+        if let p = lockProgress(now: now), p >= 1 { lock = Lock(degree: held.last!, output: out) }
+        return out
+    }
+
+    private func bassNote(_ midi: Int) -> Int {
+        var n = midi
+        while n < lowestBass { n += 12 }
+        return n
+    }
+
+    private mutating func renderHeld() -> Output? {
         guard let deg = held.last else { return nil }
         let c = chord(degree: deg, key: key, scale: scale, mod: mods.last)
         let root = rootMidi(degree: deg)
@@ -137,11 +196,11 @@ public struct RSplexState {
         lastSource = (base, voiceLeading, inversion)
         var notes = voicing, name = c.name
         if bassMode == 1 || (bassMode == 2 && held.count < 2) {
-            notes.append(root - 24)
+            notes.append(bassNote(root - 24))
         } else if bassMode == 2 {
-            notes.append(rootMidi(degree: held[0]) - 24)
+            notes.append(bassNote(rootMidi(degree: held[0]) - 24))
             name += "/" + noteNames[(key + scale[held[0]]) % 12]
         }
-        return (notes, name)
+        return Output(notes: notes, name: name)
     }
 }

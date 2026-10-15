@@ -70,8 +70,8 @@ let major = scales[0].steps
     s.shiftOctave(5)
     #expect(s.octave == 2)
     s.shiftOctave(-10)
-    #expect(s.octave == -1)
-    #expect(s.render()!.notes == [48, 52, 55])
+    #expect(s.octave == -2)
+    #expect(s.render()!.notes == [36, 40, 43])
 }
 
 @Test func octaveShiftWorksWithVoiceLeading() {
@@ -153,4 +153,96 @@ let major = scales[0].steps
             }
         }
     }
+}
+
+@Test func shiftTabCyclesScalesBackwards() {
+    var s = RSplexState()
+    s.previousScale()
+    #expect(s.scaleIdx == scales.count - 1)
+    s.nextScale()
+    #expect(s.scaleIdx == 0)
+}
+
+@Test func bassStaysAudibleAtLowOctaves() {
+    var s = RSplexState()
+    s.cycleBass()   // ROOT
+    s.shiftKey(6)   // F#, the lowest-sitting key
+    s.shiftOctave(-2)
+    s.press(degree: 0)
+    let notes = s.render()!.notes
+    #expect(notes.last! >= lowestBass)
+    #expect(notes.last! <= notes.first!)  // never above the chord (doubles the root at the very bottom)
+    s.shiftOctave(4)
+    #expect(s.render()!.notes.last! == s.rootMidi(degree: 0) - 24)   // untouched when already audible
+}
+
+@Test func holdingFourSecondsLocks() {
+    var s = RSplexState()
+    s.press(degree: 0)
+    _ = s.render(now: 10)
+    #expect(s.lockProgress(now: 12) == 0.5)
+    _ = s.render(now: 13.9)
+    #expect(s.lock == nil)
+    _ = s.render(now: 14)
+    #expect(s.lock?.degree == 0)
+    s.release(degree: 0)
+    #expect(s.render(now: 15)?.name == "C")   // keeps sounding with no keys held
+    s.releaseAll()                              // window losing focus
+    #expect(s.render(now: 16)?.name == "C")
+}
+
+@Test func lockIncludesHeldModifier() {
+    var s = RSplexState()
+    s.press(degree: 4); s.press(mod: 1)
+    _ = s.render(now: 0)
+    _ = s.render(now: 4)
+    s.release(mod: 1); s.release(degree: 4)
+    #expect(s.render(now: 5)?.name == "G7")
+}
+
+@Test func changingTheChordRestartsTheLockTimer() {
+    var s = RSplexState()
+    s.press(degree: 0)
+    _ = s.render(now: 0)
+    s.press(mod: 1)
+    _ = s.render(now: 3)          // C7 starts sounding at 3 s
+    _ = s.render(now: 6)
+    #expect(s.lock == nil)
+    _ = s.render(now: 7)
+    #expect(s.lock?.output.name == "C7")
+}
+
+@Test func otherKeyBreaksLockAndPlays() {
+    var s = RSplexState()
+    s.press(degree: 0); _ = s.render(now: 0); _ = s.render(now: 4); s.release(degree: 0)
+    #expect(s.breakLock(pressingDegree: 3) == 0)
+    s.press(degree: 3)
+    #expect(s.render(now: 5)?.name == "F")
+    s.release(degree: 3)
+    #expect(s.render(now: 6) == nil)
+}
+
+@Test func nonChordKeyBreaksLock() {
+    var s = RSplexState()
+    s.press(degree: 0); _ = s.render(now: 0); _ = s.render(now: 4); s.release(degree: 0)
+    #expect(s.breakLock() == 0)
+    s.shiftOctave(1)
+    #expect(s.render(now: 5) == nil)
+    #expect(s.breakLock() == nil)   // nothing left to break
+}
+
+@Test func sameKeyBreaksLockReplaysAndCannotRelockUntilReleased() {
+    var s = RSplexState()
+    s.press(degree: 0); _ = s.render(now: 0); _ = s.render(now: 4); s.release(degree: 0)
+    s.breakLock(pressingDegree: 0)
+    s.press(degree: 0)
+    #expect(s.render(now: 5)?.name == "C")
+    #expect(s.lockProgress(now: 5) == nil)
+    _ = s.render(now: 20)
+    #expect(s.lock == nil)                      // held 15 s, still not locked
+    s.release(degree: 0)
+    #expect(s.render(now: 21) == nil)           // stops on release
+    s.press(degree: 0)                          // a fresh press can lock again
+    _ = s.render(now: 22); _ = s.render(now: 26)
+    #expect(s.lock != nil)
 }
