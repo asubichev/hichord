@@ -53,6 +53,8 @@ final class ChordView: NSView {
     var lockedAt: Double?
     var unlocked: (degree: Int, at: Double)?
     var timer: Timer?
+    /// The bundle carries the release version; a plain `swift build` run has none.
+    let version = "v" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev")
     static let pulseSeconds = 0.25, fadeSeconds = 0.3
     override var acceptsFirstResponder: Bool { true }
     override var isFlipped: Bool { true }
@@ -181,11 +183,18 @@ final class ChordView: NSView {
             let active = s.lock.map { $0.mod == i } ?? (s.mods.last == i)
             (active ? NSColor.systemTeal : NSColor(white: 0.22, alpha: 1)).setFill()
             NSBezierPath(roundedRect: rect, xRadius: 6, yRadius: 6).fill()
-            modKeys[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 4), withAttributes: small)
-            modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: small)
+            // Dark text on the lit box, light text on the idle one, so both read clearly.
+            let keyAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12),
+                .foregroundColor: active ? NSColor(white: 0, alpha: 0.6) : NSColor.lightGray]
+            let labelAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.boldSystemFont(ofSize: 13),
+                .foregroundColor: active ? NSColor.black : NSColor.white]
+            modKeys[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 4), withAttributes: keyAttrs)
+            modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: labelAttrs)
         }
         "Hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
+        let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
+        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 263), withAttributes: faint)
     }
 
     func drawLockBadge(at p: NSPoint, size: CGFloat, alpha: Double) {
