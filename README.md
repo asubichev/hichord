@@ -25,4 +25,5 @@ use System Settings → Privacy & Security → **Open Anyway**.
 ## Releasing
 
 Every merge to `main` runs the tests and publishes a release `v<VERSION>.<run number>`. Bump `VERSION` for a new minor line.
+To merge without releasing, add the `no-release` label to the PR before merging.
 Build locally with `scripts/bundle.sh <version>`.
