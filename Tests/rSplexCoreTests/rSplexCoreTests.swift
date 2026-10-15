@@ -112,3 +112,10 @@ let major = scales[0].steps
     s.cycleBass()   // OFF
     #expect(s.render()!.notes.count == 3)
 }
+
+@Test func minorDimToggleSwitchesBothWays() {
+    func c(_ d: Int) -> Chord { chord(degree: d, key: 0, scale: major, mod: 6) }
+    #expect(c(0).name == "Cm" && c(0).iv == [0, 3, 7])      // major -> minor
+    #expect(c(1).name == "Ddim" && c(1).iv == [0, 3, 6])    // minor -> dim
+    #expect(c(6).name == "Bm" && c(6).iv == [0, 3, 7])      // dim -> minor
+}

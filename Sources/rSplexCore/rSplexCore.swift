@@ -41,7 +41,9 @@ public func chord(degree d: Int, key: Int, scale: [Int], mod: Int?) -> Chord {
         case 3: iv.append(14); suffix += "add9"
         case 4: iv = [0, 5, 7]; suffix = "sus4"
         case 5: if major { iv = [0, 4, 7, 9]; suffix = "6" } else { iv = [0, 2, 7]; suffix = "sus2" }
-        case 6: if major { iv = [0, 3, 7]; suffix = "m" } else { iv = [0, 3, 6]; suffix = "dim" }
+        case 6:
+            // Toggles between minor and diminished; a major chord goes to minor.
+            if third == 3 && fifth == 7 { iv = [0, 3, 6]; suffix = "dim" } else { iv = [0, 3, 7]; suffix = "m" }
         case 7: iv = [0, 4, 8]; suffix = "aug"
         case 8: iv = [0, 2, 7]; suffix = "sus2"
         default: iv = [0, 7, 12]; suffix = "5"
