@@ -27,13 +27,13 @@ independently (today the whole chord shares one envelope). This release builds b
   modifier, bass, and voicing. You can then let go of every key and it keeps playing.
 - **Feedback:** while held, the button shows a fill/ring progressing over the 4 s so the lock is predictable; on lock,
   a short (~200 ms) pulse and a lock badge on the button. Unlocking fades the badge.
-- **Breaking the lock:** any key press breaks it, including the same chord key.
-  - Same chord key: breaks the lock and is consumed (does not replay the chord).
+- **Breaking the lock:** any key press breaks it — chord keys, modifiers, arrows, Tab, V, B, Z, everything.
+  - Same chord key: breaks the lock and replays the chord as a normal held chord, so it stops when you release. That
+    press does not start a new lock timer.
   - Any other key: breaks the lock *and* does its normal action (another chord key plays that chord, arrows shift key, etc.).
   - Key releases never break the lock.
 - **Window loses focus:** the lock survives (it's meant to be hands-free); held, unlocked keys still release as today.
-- Open question for review: should changing settings that don't play a note (V, B, Z, Tab, arrows) break it, or retune
-  the locked chord? Spec says break, per "anything else".
+- Later, maybe: let sound-only settings change a locked chord without breaking it. Niche, so not now.
 
 ## v1.2 — Arpeggiator
 
@@ -51,14 +51,30 @@ Modeled on HiChord's Arpeggio mode:
 - Enter steps by pressing chord keys; play/stop, move the cursor, replace a step, add/remove 4 steps.
 - Plays through the arpeggiator when it's on.
 
+## v1.4 — MIDI out (priority after the sequencer)
+
+Primary use case: driving a **TE OP-1 field over USB-C**. The OP-1 field shows up on the Mac as a class-compliant USB
+MIDI device, so this is CoreMIDI output to a chosen destination.
+- Choose the MIDI destination (default to an OP-1 field if connected); channel select.
+- Send note on/off for everything that sounds: chords, bass, arp, sequencer.
+- Optionally send MIDI clock so the OP-1 field's tempo follows the app.
+- Toggle whether the built-in synth also plays.
+- Verified on a real OP-1 field before merge.
+
+## v1.5 — Sounds
+
+- Sine, triangle, saw, and one natural-sounding instrument (piano-like).
+
+## v1.6 — Effects
+
+- Reverb, BPM-synced delay, and a filter with low-pass and high-pass.
+
 ## Later candidates (pick deliberately, not all)
 
-- Sounds: sine, triangle, square, a low-pass filter with cutoff, stereo spread.
-- Effects: reverb and a BPM-synced delay.
 - Presets: save/load a few slots.
 - HiChord chord lock (per-button permanent modifier) and the Extended / Chromatic modifier sets.
 - Pentatonic and Blues scales — first work out how HiChord derives 7 chords from 5–6-note scales.
-- MIDI out, so the app can drive other music software.
+- Stereo spread.
 
 ## Out of scope
 
