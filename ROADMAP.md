@@ -91,6 +91,6 @@ hardware-only features (battery, USB modes, firmware).
 
 ## Keyboard layout
 
-Taken: `A`–`J` chords, `1`–`0` modifiers, arrows, Tab, `Z` `V` `B` `L` `E`, and for the sequencer Space `-` `K`
+Taken: `A`–`J` chords, `1`–`0` modifiers, arrows, Tab, `V` `B` `L` `E`, and for the sequencer Space `-` `K`
 `[` `]` `\`. Shift is the sequencer modifier: Shift + chord records, Shift + arrows move the cursor and change step
 length, Shift+Delete deletes. Prefer Shift keychords over new single keys. The arp draft uses `R` `T` `Y`.

@@ -21,7 +21,6 @@ A chord synth for macOS, played from the computer keyboard.
 | K | 4 or 8 steps |
 | [ / ] | tempo −1 / +1 BPM (40–300) |
 | \\ | tap tempo (3+ taps) |
-| Z | inversion |
 | V | voice leading on/off |
 | B | bass: OFF / ROOT / SLASH (hold the bass chord key, then the chord) |
 | L | hold-to-lock on/off |

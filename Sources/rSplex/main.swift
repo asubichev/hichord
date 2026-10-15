@@ -157,7 +157,6 @@ final class ChordView: NSView {
                 if shift || recSlot != nil { record(degree: d) }
             }
             else if let m = modKeyCodes.firstIndex(of: e.keyCode) { state.press(mod: m) }
-            else if c == "z" { state.cycleInversion() }
             else if c == "v" { state.voiceLeading.toggle() }
             else if c == "b" { state.cycleBass() }
             else if c == "l" { state.lockEnabled.toggle() }
@@ -255,11 +254,21 @@ final class ChordView: NSView {
             drawLockBadge(at: NSPoint(x: x, y: 26), size: 20, alpha: 1)
         }
         let seqInfo = "Seq \(playing ? "▶" : "■") \(seq.length) × \(stepLengths[seq.stepLengthIdx].name)   \(Int(bpm)) BPM\(recSlot != nil ? "   ● REC" : "")"
-        "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)   \(seqInfo)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
-        let settings = "Env \(envelopePresets[envelopeIdx].name)   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
-            + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])   Lock \(s.lockEnabled ? "ON" : "OFF")"
-        let settingsWidth = settings.size(withAttributes: small).width
-        settings.draw(at: NSPoint(x: bounds.width - 20 - settingsWidth, y: 66), withAttributes: small)
+        // Each setting shows its own keys: arrows around key and octave, (⇧)⇥ by the scale, and an underlined
+        // letter for the single-key toggles.
+        "Key ← \(noteNames[s.key]) →   \(scales[s.scaleIdx].name) (⇧)⇥   \(seqInfo)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
+        let settings = NSMutableAttributedString()
+        for (label, value) in [("Env", envelopePresets[envelopeIdx].name),
+                               ("Oct", "↓ \(s.octave >= 0 ? "+" : "")\(s.octave) ↑"),
+                               ("VoiceLead", s.voiceLeading ? "ON" : "OFF"),
+                               ("Bass", bassModes[s.bassMode]),
+                               ("Lock", s.lockEnabled ? "ON" : "OFF")] {
+            if settings.length > 0 { settings.append(NSAttributedString(string: "   ", attributes: small)) }
+            let item = NSMutableAttributedString(string: "\(label) \(value)", attributes: small)
+            if label != "Oct" { item.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: 1)) }
+            settings.append(item)
+        }
+        settings.draw(at: NSPoint(x: bounds.width - 20 - settings.size().width, y: 66))
         let gap: CGFloat = 8
         let w = (bounds.width - 40 - 6 * gap) / 7
         for d in 0..<7 {
@@ -310,12 +319,10 @@ final class ChordView: NSView {
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: labelAttrs)
         }
         drawSequence()
-        "Hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
-            .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
         "Space play/stop · ⇧+chord record · ⇧←/→ step · ⇧↑/↓ speed · ⇧⌫ delete · - rest · K 4/8 steps · [ ] tempo · \\ tap"
-            .draw(at: NSPoint(x: 20, y: 280), withAttributes: small)
+            .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
         let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
-        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 281), withAttributes: faint)
+        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 263), withAttributes: faint)
     }
 
     /// Top right, above the settings: one box per step with the chord (or – for a rest), orange at the playhead,
@@ -361,7 +368,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     let view = ChordView()
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 308),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "rSplex"
         window.contentView = view
