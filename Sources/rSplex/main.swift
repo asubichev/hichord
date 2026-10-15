@@ -3,6 +3,9 @@ import AVFoundation
 import rSplexCore
 
 let degreeKeys = ["a", "s", "d", "f", "g", "h", "j"]
+/// Keys that only change sound, tempo, or the sequencer; pressing them leaves a lock in place.
+let lockSafeChars: Set<String> = ["e", "q", ",", ".", "-", "k", "u", "[", "]", "\\"]
+let lockSafeKeyCodes: Set<UInt16> = [49, 51]   // Space, Delete
 let modKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
 
 /// Hosts the VoiceEngine in the audio callback. The UI queues events; the callback drains them at the start of
@@ -12,6 +15,8 @@ final class Synth {
     private let lock = NSLock()
     private var pending: [VoiceEvent] = []
     private var draining: [VoiceEvent] = []
+    private var pendingTimed: [TimedEvent] = []
+    private var drainingTimed: [TimedEvent] = []
     private var core: VoiceEngine
     private var beatsSnapshot = 0.0
 
@@ -19,13 +24,18 @@ final class Synth {
         let sr = engine.outputNode.outputFormat(forBus: 0).sampleRate
         core = VoiceEngine(sampleRate: sr)
         pending.reserveCapacity(256); draining.reserveCapacity(256)
+        pendingTimed.reserveCapacity(256); drainingTimed.reserveCapacity(256)
         let fmt = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 1)!
         let src = AVAudioSourceNode(format: fmt) { [unowned self] _, _, frameCount, abl in
             let out = UnsafeMutableAudioBufferListPointer(abl)[0].mData!.assumingMemoryBound(to: Float.self)
             // Swap buffers under the lock so the audio thread never allocates.
-            self.lock.lock(); swap(&self.pending, &self.draining); self.lock.unlock()
+            self.lock.lock()
+            swap(&self.pending, &self.draining); swap(&self.pendingTimed, &self.drainingTimed)
+            self.lock.unlock()
             for e in self.draining { self.core.handle(e) }
+            for t in self.drainingTimed { self.core.schedule(t) }
             self.draining.removeAll(keepingCapacity: true)
+            self.drainingTimed.removeAll(keepingCapacity: true)
             self.core.render(frames: Int(frameCount), into: out)
             self.lock.lock(); self.beatsSnapshot = self.core.beats; self.lock.unlock()
             return noErr
@@ -40,6 +50,12 @@ final class Synth {
         lock.lock(); pending.append(contentsOf: events); lock.unlock()
     }
 
+    /// Queues events to play on exact beats of the engine's clock.
+    func schedule(_ events: [TimedEvent]) {
+        guard !events.isEmpty else { return }
+        lock.lock(); pendingTimed.append(contentsOf: events); lock.unlock()
+    }
+
     var beats: Double { lock.lock(); defer { lock.unlock() }; return beatsSnapshot }
 }
 
@@ -49,6 +65,19 @@ final class ChordView: NSView {
     var display = "—"
     var sounding: Set<Int> = []
     var envelopeIdx = 0
+    var bpm = 120.0
+    var tapTempo = TapTempo()
+    var seq = Sequencer()
+    var playing = false
+    /// Voices the sequence's chords with the live settings but its own voice-leading history.
+    var seqVoicer: RSplexState = { var s = RSplexState(); s.lockEnabled = false; return s }()
+    var nextStepBeat = 0.0, nextStepIdx = 0
+    var seqSounding: Set<Int> = []
+    /// Steps scheduled but maybe not reached yet, so the playhead shows what's actually sounding.
+    var playheadQueue: [(beat: Double, idx: Int)] = []
+    var playhead: Int?
+    /// How far ahead steps are handed to the audio thread, which then plays them on the exact sample.
+    static let lookaheadSeconds = 0.12
     /// Lock animation: when the current lock started (pulse), and the degree/time of the last unlock (badge fade).
     var lockedAt: Double?
     var unlocked: (degree: Int, at: Double)?
@@ -74,6 +103,7 @@ final class ChordView: NSView {
         let animating = lockedAt.map { t - $0 < Self.pulseSeconds } == true
             || unlocked.map { t - $0.at < Self.fadeSeconds } == true
         if state.lockProgress(now: t) != nil || animating { update() }
+        if playing { scheduleSteps(); needsDisplay = true }
     }
 
     func update() {
@@ -85,6 +115,7 @@ final class ChordView: NSView {
         let adsr = envelopePresets[envelopeIdx].adsr
         let gain = 3 / Double(max(3, next.count))
         synth.send(off.map { .noteOff($0) } + on.map { .noteOn($0, adsr, gain: gain) })
+        if playing { scheduleSteps() }
         sounding = next
         if !wasLocked, state.lock != nil { lockedAt = now }
         needsDisplay = true
@@ -92,11 +123,13 @@ final class ChordView: NSView {
 
     override func keyDown(with e: NSEvent) {
         let c = e.charactersIgnoringModifiers?.lowercased() ?? ""
-        let repeatable = [123, 124, 125, 126, 48].contains(e.keyCode)   // arrows, Tab
+        let repeatable = [123, 124, 125, 126, 48, 33, 30, 43, 47, 51].contains(e.keyCode)   // arrows, Tab, [ ] , . Delete
         if e.isARepeat && !repeatable { return }
         // Any key press breaks a lock; the press then does its normal job.
         let degree = degreeKeys.firstIndex(of: c)
-        if let d = state.breakLock(pressingDegree: degree) { unlocked = (d, now); lockedAt = nil }
+        let lockSafe = lockSafeChars.contains(c) || lockSafeKeyCodes.contains(e.keyCode)
+        if !lockSafe, let d = state.breakLock(pressingDegree: degree) { unlocked = (d, now); lockedAt = nil }
+        let shift = e.modifierFlags.contains(.shift)
         switch e.keyCode {
         case 123: state.shiftKey(-1)
         case 124: state.shiftKey(1)
@@ -105,13 +138,25 @@ final class ChordView: NSView {
         case 48: e.modifierFlags.contains(.shift) ? state.previousScale() : state.nextScale()
         case 14:       // E envelope preset
             envelopeIdx = (envelopeIdx + 1) % envelopePresets.count
+        case 49: playing ? stopSequence() : startSequence()     // Space
+        case 51: shift ? seq.clear() : seq.backspace()           // Delete
         default:
-            if let d = degree { state.press(degree: d) }
+            if let d = degree {
+                state.press(degree: d)
+                if seq.recording { record(degree: d) }
+            }
             else if let m = modKeys.firstIndex(of: c) { state.press(mod: m) }
             else if c == "z" { state.cycleInversion() }
             else if c == "v" { state.voiceLeading.toggle() }
             else if c == "b" { state.cycleBass() }
             else if c == "l" { state.lockEnabled.toggle() }
+            else if c == "q" { seq.recording.toggle() }
+            else if c == "," || c == "." { seq.moveCursor(c == "." ? 1 : -1) }
+            else if c == "-" { if seq.recording { seq.write(nil) } }
+            else if c == "k" { seq.resize(grow: !shift) }
+            else if c == "u" { seq.cycleStepLength(shift ? -1 : 1) }
+            else if c == "[" || c == "]" { setBPM(bpm.rounded() + (c == "]" ? 1 : -1)) }
+            else if c == "\\" { if let b = tapTempo.tap(at: now) { setBPM(b.rounded()) } }
             else { update(); super.keyDown(with: e); return }
         }
         update()
@@ -121,6 +166,60 @@ final class ChordView: NSView {
         guard let c = e.charactersIgnoringModifiers?.lowercased() else { return }
         if let d = degreeKeys.firstIndex(of: c) { state.release(degree: d); update() }
         else if let m = modKeys.firstIndex(of: c) { state.release(mod: m); update() }
+    }
+
+    func setBPM(_ b: Double) {
+        bpm = min(bpmRange.upperBound, max(bpmRange.lowerBound, b))
+        synth.send([.setBPM(bpm)])
+    }
+
+    /// Records the chord just pressed at the cursor. In SLASH bass, a second key held over the first turns the
+    /// step just written into a slash chord, since holding the bass key already wrote it.
+    func record(degree d: Int) {
+        let mod = state.mods.last
+        if state.bassMode == 2, state.held.count >= 2 {
+            seq.rewriteLast(SeqStep(degree: d, mod: mod, slash: state.held[0]))
+        } else {
+            seq.write(SeqStep(degree: d, mod: mod))
+        }
+    }
+
+    func startSequence() {
+        playing = true
+        nextStepIdx = 0
+        nextStepBeat = synth.beats + 0.02 * bpm / 60
+        scheduleSteps()
+    }
+
+    func stopSequence() {
+        playing = false
+        synth.send([.cancelScheduled(layer: sequencerLayer), .releaseLayer(sequencerLayer)])
+        seqSounding = []
+        playheadQueue = []
+        playhead = nil
+    }
+
+    /// Hands every step starting within the lookahead window to the audio thread, timed to the beat.
+    func scheduleSteps() {
+        let now = synth.beats
+        while nextStepBeat < now + Self.lookaheadSeconds * bpm / 60 {
+            nextStepIdx %= seq.length
+            let idx = nextStepIdx
+            seqVoicer.takeSettings(from: state)
+            let notes = Set(seq.steps[idx].flatMap { seqVoicer.render(step: $0)?.notes } ?? [])
+            let adsr = envelopePresets[envelopeIdx].adsr
+            let gain = 3 / Double(max(3, notes.count))
+            // Every step re-strikes its chord, so repeated chords still mark the rhythm.
+            let events = seqSounding.sorted().map { VoiceEvent.noteOff($0, layer: sequencerLayer) }
+                + notes.sorted().map { VoiceEvent.noteOn($0, adsr, gain: gain, layer: sequencerLayer) }
+            synth.schedule(events.map { TimedEvent(nextStepBeat, $0) })
+            seqSounding = notes
+            playheadQueue.append((nextStepBeat, idx))
+            nextStepBeat += seq.stepBeats
+            nextStepIdx = idx + 1
+        }
+        while playheadQueue.count > 1, playheadQueue[1].beat <= now { playheadQueue.removeFirst() }
+        if let first = playheadQueue.first, first.beat <= now { playhead = first.idx }
     }
 
     /// Releases held keys (e.g. the window lost focus); a lock keeps playing.
@@ -137,7 +236,8 @@ final class ChordView: NSView {
             let x = 24 + display.size(withAttributes: big).width
             drawLockBadge(at: NSPoint(x: x, y: 26), size: 20, alpha: 1)
         }
-        "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
+        let seqInfo = "Seq \(playing ? "▶" : "■") \(seq.length) × \(stepLengths[seq.stepLengthIdx].name)   \(Int(bpm)) BPM\(seq.recording ? "   ● REC" : "")"
+        "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)   \(seqInfo)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
         let settings = "Env \(envelopePresets[envelopeIdx].name)   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
             + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])   Lock \(s.lockEnabled ? "ON" : "OFF")"
         let settingsWidth = settings.size(withAttributes: small).width
@@ -191,10 +291,38 @@ final class ChordView: NSView {
             modKeys[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 4), withAttributes: keyAttrs)
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: labelAttrs)
         }
+        drawSequence(top: 262)
         "Hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
-            .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
+            .draw(at: NSPoint(x: 20, y: 322), withAttributes: small)
+        "Space play/stop · Q record · , . cursor · - rest · ⌫ delete (⇧⌫ clear) · K/⇧K ±4 steps · U step length · [ ] tempo · \\ tap"
+            .draw(at: NSPoint(x: 20, y: 340), withAttributes: small)
         let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
-        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 263), withAttributes: faint)
+        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 341), withAttributes: faint)
+    }
+
+    /// One box per step: the chord (or – for a rest), orange at the playhead, with an outline cursor (red while recording).
+    func drawSequence(top: CGFloat) {
+        let gap: CGFloat = 4
+        let w = (bounds.width - 40 - CGFloat(Sequencer.maxSteps - 1) * gap) / CGFloat(Sequencer.maxSteps)
+        for i in 0..<seq.length {
+            let rect = NSRect(x: 20 + CGFloat(i) * (w + gap), y: top, width: w, height: 44)
+            let path = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
+            let atHead = playhead == i
+            (atHead ? NSColor.systemOrange : NSColor(white: i % 4 == 0 ? 0.27 : 0.22, alpha: 1)).setFill()
+            path.fill()
+            let ink = atHead ? NSColor.black : NSColor.white
+            let name = seq.steps[i].map { stepName($0, key: state.key, scale: state.scale) } ?? "–"
+            let size: CGFloat = name.count > 4 ? 10 : 13
+            name.draw(at: NSPoint(x: rect.minX + 4, y: rect.minY + 6),
+                      withAttributes: [.font: NSFont.boldSystemFont(ofSize: size), .foregroundColor: ink])
+            "\(i + 1)".draw(at: NSPoint(x: rect.minX + 4, y: rect.maxY - 16),
+                            withAttributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: ink.withAlphaComponent(0.6)])
+            if i == seq.cursor {
+                (seq.recording ? NSColor.systemRed : NSColor(white: 0.7, alpha: 1)).setStroke()
+                path.lineWidth = seq.recording ? 2.5 : 1.5
+                path.stroke()
+            }
+        }
     }
 
     func drawLockBadge(at p: NSPoint, size: CGFloat, alpha: Double) {
@@ -214,7 +342,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     let view = ChordView()
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 362),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "rSplex"
         window.contentView = view
