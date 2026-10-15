@@ -23,6 +23,8 @@ public enum VoiceEvent: Equatable {
     case noteOff(Int)
     case allNotesOff
     case setBPM(Double)
+    /// Starts, updates, or (nil) stops the arpeggiator. A new note set restarts the pattern but keeps the timing.
+    case setArp(Arp?)
 }
 
 /// Notes to stop and start to go from one set of sounding notes to another; shared notes keep ringing.
@@ -60,6 +62,14 @@ public struct VoiceEngine {
     public private(set) var sampleTime: Int64 = 0
     private var lp = 0.0
 
+    // Arpeggiator: the next tick fires at `arpNextAt` beats; `arpTick` counts ticks (for swing), `arpStep` pattern steps.
+    public private(set) var arp: Arp?
+    public private(set) var arpNote: Int?
+    private var arpNextAt = 0.0, arpOffAt = 0.0
+    private var arpTick = 0, arpStep = 0
+    private var rng: UInt64 = 0x9E37_79B9_7F4A_7C15
+    private var lastRandom = -1
+
     public init(sampleRate: Double, voiceCount: Int = 16) {
         self.sampleRate = sampleRate
         voices = Array(repeating: Voice(), count: voiceCount)
@@ -76,9 +86,44 @@ public struct VoiceEngine {
                 startRelease(i)
             }
         case .allNotesOff:
+            arpNote = nil
             for i in voices.indices where voices[i].stage != .idle && voices[i].stage != .release { startRelease(i) }
         case .setBPM(let b): bpm = min(bpmRange.upperBound, max(bpmRange.lowerBound, b))
+        case .setArp(let a): setArp(a)
         }
+    }
+
+    private mutating func setArp(_ a: Arp?) {
+        let a = a?.notes.isEmpty == true ? nil : a
+        let wasRunning = arp != nil
+        if let a, a.notes != arp?.notes { arpStep = 0; lastRandom = -1 }
+        if a != nil, !wasRunning { arpNextAt = beats; arpTick = 0 }   // first note plays right away
+        arp = a
+    }
+
+    /// Called every sample: ends the current arp note at its gate, and plays the next one when its tick comes.
+    private mutating func tickArp() {
+        if let n = arpNote, beats >= arpOffAt { handle(.noteOff(n)); arpNote = nil }
+        guard let a = arp, beats >= arpNextAt else { return }
+        let n = a.notes.count
+        let i: Int
+        if a.pattern == .random {
+            // xorshift; never the same note twice in a row.
+            rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17
+            var r = Int(rng % UInt64(n))
+            if n > 1, r == lastRandom { r = (r + 1 + Int((rng >> 32) % UInt64(n - 1))) % n }
+            lastRandom = r; i = r
+        } else {
+            i = a.pattern.index(step: arpStep, count: n)
+        }
+        if let old = arpNote { handle(.noteOff(old)) }
+        let note = a.notes[i]
+        noteOn(note, a.adsr, a.gain)
+        let len = a.rate.length(ofTick: arpTick)
+        arpNote = note
+        arpOffAt = arpNextAt + len * Arp.gate
+        arpNextAt += len
+        arpTick += 1; arpStep += 1
     }
 
     private mutating func startRelease(_ i: Int) {
@@ -133,6 +178,7 @@ public struct VoiceEngine {
     public mutating func render(frames: Int, into out: UnsafeMutablePointer<Float>) {
         let sr = sampleRate
         for f in 0..<frames {
+            if arp != nil || arpNote != nil { tickArp() }
             var s = 0.0
             for i in voices.indices where voices[i].stage != .idle {
                 advanceEnvelope(i)

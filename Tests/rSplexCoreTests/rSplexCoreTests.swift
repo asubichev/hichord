@@ -263,3 +263,12 @@ let major = scales[0].steps
     _ = s.render(now: 70); _ = s.render(now: 74)
     #expect(s.lock?.mod == nil)
 }
+
+@Test func outputNamesTheBassNote() {
+    var s = RSplexState()
+    s.press(degree: 0)
+    #expect(s.render()?.bass == nil)
+    s.cycleBass()
+    let out = s.render()!
+    #expect(out.bass == out.notes.last && out.bass! < out.notes.min()! + 1)
+}

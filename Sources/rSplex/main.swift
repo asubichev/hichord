@@ -3,6 +3,8 @@ import AVFoundation
 import rSplexCore
 
 let degreeKeys = ["a", "s", "d", "f", "g", "h", "j"]
+/// Keys that only change sound or tempo; pressing them leaves a lock in place.
+let lockSafeKeys: Set<String> = ["e", "r", "t", "y", "[", "]", "\\"]
 let modKeys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
 
 /// Hosts the VoiceEngine in the audio callback. The UI queues events; the callback drains them at the start of
@@ -49,6 +51,12 @@ final class ChordView: NSView {
     var display = "—"
     var sounding: Set<Int> = []
     var envelopeIdx = 0
+    var arpMode = 0
+    var arpPattern = ArpPattern.up
+    var arpRate = ArpRate.defaultRate
+    var bpm = 120.0
+    var tapTempo = TapTempo()
+    var sentArp: Arp?
     /// Lock animation: when the current lock started (pulse), and the degree/time of the last unlock (badge fade).
     var lockedAt: Double?
     var unlocked: (degree: Int, at: Double)?
@@ -74,29 +82,41 @@ final class ChordView: NSView {
         let animating = lockedAt.map { t - $0 < Self.pulseSeconds } == true
             || unlocked.map { t - $0.at < Self.fadeSeconds } == true
         if state.lockProgress(now: t) != nil || animating { update() }
+        // Once an animation ends, clear it and draw one last frame, so no faint badge or ring is left on screen.
+        if let at = lockedAt, t - at >= Self.pulseSeconds { lockedAt = nil; needsDisplay = true }
+        if let u = unlocked, t - u.at >= Self.fadeSeconds { unlocked = nil; needsDisplay = true }
     }
 
     func update() {
         let wasLocked = state.lock != nil
         let out = state.render(now: now)
         display = out?.name ?? "—"
-        let next = Set(out?.notes ?? [])
-        let (off, on) = chordDiff(from: sounding, to: next)
+        let notes = Set(out?.notes ?? [])
         let adsr = envelopePresets[envelopeIdx].adsr
-        let gain = 3 / Double(max(3, next.count))
-        synth.send(off.map { .noteOff($0) } + on.map { .noteOn($0, adsr, gain: gain) })
-        sounding = next
+        // ARP plays the chord's notes one at a time; CHORD+ARP keeps the chord and arpeggiates an octave above it.
+        // The bass note stays out of the arp and holds underneath, so turning bass on doesn't change the pattern.
+        let bass = out?.bass.map { Set([$0]) } ?? []
+        let pad = arpMode == 1 ? bass : notes
+        let arpNotes = notes.subtracting(bass)
+        let arp = arpMode == 0 || arpNotes.isEmpty ? nil
+            : Arp(notes: ArpNotes(arpNotes.map { $0 + (arpMode == 2 ? 12 : 0) }), pattern: arpPattern, rate: arpRate, adsr: adsr)
+        let (off, on) = chordDiff(from: sounding, to: pad)
+        let gain = 3 / Double(max(3, pad.count))
+        var events: [VoiceEvent] = off.map { .noteOff($0) } + on.map { .noteOn($0, adsr, gain: gain) }
+        if arp != sentArp { events.append(.setArp(arp)); sentArp = arp }
+        synth.send(events)
+        sounding = pad
         if !wasLocked, state.lock != nil { lockedAt = now }
         needsDisplay = true
     }
 
     override func keyDown(with e: NSEvent) {
         let c = e.charactersIgnoringModifiers?.lowercased() ?? ""
-        let repeatable = [123, 124, 125, 126, 48].contains(e.keyCode)   // arrows, Tab
+        let repeatable = [123, 124, 125, 126, 48, 33, 30].contains(e.keyCode)   // arrows, Tab, [ ]
         if e.isARepeat && !repeatable { return }
-        // Any key press breaks a lock; the press then does its normal job.
+        // Any key press breaks a lock, except sound and tempo keys, so a locked chord can be reshaped while it plays.
         let degree = degreeKeys.firstIndex(of: c)
-        if let d = state.breakLock(pressingDegree: degree) { unlocked = (d, now); lockedAt = nil }
+        if !lockSafeKeys.contains(c), let d = state.breakLock(pressingDegree: degree) { unlocked = (d, now); lockedAt = nil }
         switch e.keyCode {
         case 123: state.shiftKey(-1)
         case 124: state.shiftKey(1)
@@ -112,6 +132,11 @@ final class ChordView: NSView {
             else if c == "v" { state.voiceLeading.toggle() }
             else if c == "b" { state.cycleBass() }
             else if c == "l" { state.lockEnabled.toggle() }
+            else if c == "r" { arpMode = (arpMode + 1) % arpModes.count }
+            else if c == "t" { arpPattern = ArpPattern(rawValue: (arpPattern.rawValue + 1) % ArpPattern.allCases.count)! }
+            else if c == "y" { arpRate = ArpRate(rawValue: (arpRate.rawValue + 1) % ArpRate.allCases.count)! }
+            else if c == "[" || c == "]" { setBPM(bpm.rounded() + (c == "]" ? 1 : -1)) }
+            else if c == "\\" { if let b = tapTempo.tap(at: now) { setBPM(b.rounded()) } }
             else { update(); super.keyDown(with: e); return }
         }
         update()
@@ -121,6 +146,11 @@ final class ChordView: NSView {
         guard let c = e.charactersIgnoringModifiers?.lowercased() else { return }
         if let d = degreeKeys.firstIndex(of: c) { state.release(degree: d); update() }
         else if let m = modKeys.firstIndex(of: c) { state.release(mod: m); update() }
+    }
+
+    func setBPM(_ b: Double) {
+        bpm = min(bpmRange.upperBound, max(bpmRange.lowerBound, b))
+        synth.send([.setBPM(bpm)])
     }
 
     /// Releases held keys (e.g. the window lost focus); a lock keeps playing.
@@ -137,7 +167,8 @@ final class ChordView: NSView {
             let x = 24 + display.size(withAttributes: big).width
             drawLockBadge(at: NSPoint(x: x, y: 26), size: 20, alpha: 1)
         }
-        "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
+        let arpInfo = arpMode == 0 ? "Arp OFF" : "Arp \(arpModes[arpMode]) \(arpPattern.name) \(arpRate.name)   \(Int(bpm)) BPM"
+        "Key \(noteNames[s.key]) \(scales[s.scaleIdx].name)   \(arpInfo)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
         let settings = "Env \(envelopePresets[envelopeIdx].name)   Oct \(s.octave >= 0 ? "+" : "")\(s.octave)   Inv \(s.voiceLeading ? "auto" : String(s.inversion))   "
             + "VoiceLead \(s.voiceLeading ? "ON" : "OFF")   Bass \(bassModes[s.bassMode])   Lock \(s.lockEnabled ? "ON" : "OFF")"
         let settingsWidth = settings.size(withAttributes: small).width
@@ -193,8 +224,10 @@ final class ChordView: NSView {
         }
         "Hold 1–0 modify · ←/→ key · ↑/↓ oct · Tab/⇧Tab scale · Z inv · V lead · B bass · L lock · E env"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
+        "R arp · T pattern · Y rate · [ ] tempo · \\ tap tempo"
+            .draw(at: NSPoint(x: 20, y: 280), withAttributes: small)
         let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
-        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 263), withAttributes: faint)
+        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 281), withAttributes: faint)
     }
 
     func drawLockBadge(at p: NSPoint, size: CGFloat, alpha: Double) {
@@ -214,7 +247,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     let view = ChordView()
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 308),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "rSplex"
         window.contentView = view

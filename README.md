@@ -12,6 +12,11 @@ A chord synth for macOS, played from the computer keyboard.
 | ← / → | key |
 | ↑ / ↓ | octave (-2 to +2) |
 | Tab / Shift+Tab | next / previous scale |
+| R | arp: OFF / ARP / CHORD+ARP (arp an octave above the chord) |
+| T | arp pattern: up, down, up/down, down/up, random, fingerpick |
+| Y | arp rate: 1/1 … 1/32, 1/16T, swing 1/8, swing 1/16 |
+| [ / ] | tempo −1 / +1 BPM (40–300) |
+| \\ | tap tempo (3+ taps) |
 | Z | inversion |
 | V | voice leading on/off |
 | B | bass: OFF / ROOT / SLASH (hold the bass chord key, then the chord) |
