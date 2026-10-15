@@ -27,3 +27,5 @@ use System Settings → Privacy & Security → **Open Anyway**.
 Every merge to `main` runs the tests and publishes a release `v<VERSION>.<run number>`. Bump `VERSION` for a new minor line.
 To merge without releasing, add the `no-release` label to the PR before merging.
 Build locally with `scripts/bundle.sh <version>`.
+
+The app icon is `Resources/AppIcon.png` (1024×1024). To make it from new artwork, run `scripts/compose-icon.swift` (usage at the top of the file).
