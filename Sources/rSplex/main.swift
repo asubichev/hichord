@@ -76,7 +76,8 @@ final class ChordView: NSView {
     /// Steps scheduled but maybe not reached yet, so the playhead shows what's actually sounding.
     var playheadQueue: [(beat: Double, idx: Int)] = []
     var playhead: Int?
-    /// The step being recorded; it follows the held chord (modifier, slash bass) until that chord key is released.
+    /// The step being recorded (always the cursor); it follows the held chord (modifier, slash bass), and the cursor
+    /// moves on only once every chord key is released.
     var recSlot: Int?
     /// How far ahead steps are handed to the audio thread, which then plays them on the exact sample.
     static let lookaheadSeconds = 0.12
@@ -177,20 +178,22 @@ final class ChordView: NSView {
     }
 
     /// Records the chord just pressed at the cursor. In SLASH bass, a second key held over the first turns the
-    /// step being recorded into a slash chord, since holding the bass key already wrote it.
+    /// step being recorded into a slash chord; otherwise a new chord pressed over a held one takes the next step.
     func record(degree d: Int) {
         if state.bassMode == 2, state.held.count >= 2, let slot = recSlot {
             seq.rewrite(at: slot, SeqStep(degree: d, mod: state.mods.last, slash: state.held[0]))
-        } else {
-            recSlot = seq.write(SeqStep(degree: d, mod: state.mods.last))
+            return
         }
+        if recSlot != nil { seq.moveCursor(1) }
+        seq.rewrite(at: seq.cursor, SeqStep(degree: d, mod: state.mods.last))
+        recSlot = seq.cursor
     }
 
     /// Keeps the step being recorded equal to what's sounding: pressing or releasing a modifier while the chord is
     /// held rewrites it, so the step stores whatever was played last.
     func followRecording() {
         guard let slot = recSlot else { return }
-        guard let d = state.held.last else { recSlot = nil; return }
+        guard let d = state.held.last else { recSlot = nil; seq.moveCursor(1); return }   // released: next step
         guard seq.steps[slot]?.degree == d else { return }
         let slash = state.bassMode == 2 && state.held.count >= 2 ? state.held[0] : nil
         seq.rewrite(at: slot, SeqStep(degree: d, mod: state.mods.last, slash: slash))
