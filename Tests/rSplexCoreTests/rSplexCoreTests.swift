@@ -119,3 +119,20 @@ let major = scales[0].steps
     #expect(c(1).name == "Ddim" && c(1).iv == [0, 3, 6])    // minor -> dim
     #expect(c(6).name == "Bm" && c(6).iv == [0, 3, 7])      // dim -> minor
 }
+
+@Test func voiceLeadingDoesNotDriftOverRepeatedProgressions() {
+    for prog in [[0, 1, 2, 3, 4], [0, 3, 4, 5], [0, 5, 3, 4], [4, 3, 2, 1, 0], [0, 4, 5, 2, 3, 0, 3, 4]] {
+        var s = RSplexState()
+        s.voiceLeading = true
+        var loops: [[[Int]]] = []
+        for _ in 0..<6 {
+            var loop: [[Int]] = []
+            for d in prog { s.press(degree: d); loop.append(s.render()!.notes); s.release(degree: d) }
+            loops.append(loop)
+        }
+        // Settles after the first pass and then repeats exactly.
+        #expect(loops[2...].allSatisfy { $0 == loops[1] }, "progression \(prog)")
+        // Stays within about an octave of the chords' home position (roots at 60–71).
+        for chordNotes in loops.joined() { #expect(chordNotes.allSatisfy { (52...84).contains($0) }, "\(chordNotes)") }
+    }
+}

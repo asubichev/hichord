@@ -60,13 +60,20 @@ public func invert(_ notes: [Int], _ k: Int) -> [Int] {
 }
 
 /// Inversion/octave of `notes` closest to `prev`, measured note-to-nearest-note both ways.
+/// Each semitone the voicing's average pitch strays from `notes` (the chord's home position) costs `registerPull`,
+/// so steps that are each smoothest can't ratchet the register up or down over a progression.
+public let registerPull = 2.0
+
 public func leadVoicing(_ notes: [Int], from prev: [Int]) -> [Int] {
     guard !prev.isEmpty else { return notes }
-    func cost(_ a: [Int]) -> Int {
-        a.map { x in prev.map { abs($0 - x) }.min()! }.reduce(0, +)
+    func mean(_ a: [Int]) -> Double { Double(a.reduce(0, +)) / Double(a.count) }
+    let home = mean(notes)
+    func cost(_ a: [Int]) -> Double {
+        let motion = a.map { x in prev.map { abs($0 - x) }.min()! }.reduce(0, +)
             + prev.map { x in a.map { abs($0 - x) }.min()! }.reduce(0, +)
+        return Double(motion) + registerPull * abs(mean(a) - home)
     }
-    var best = notes, bestCost = Int.max
+    var best = notes, bestCost = Double.infinity
     for shift in [0, -12, 12] {
         for k in 0..<notes.count {
             let cand = invert(notes, k).map { $0 + shift }
