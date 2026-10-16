@@ -82,6 +82,7 @@ final class ChordView: NSView {
     /// The step being recorded (always the cursor); it follows the held chord (modifier, slash bass), and the cursor
     /// moves on only once every chord key is released.
     var recSlot: Int?
+    var shiftHeld = false
     /// How far ahead steps are handed to the audio thread, which then plays them on the exact sample.
     static let lookaheadSeconds = 0.12
     /// Lock animation: when the current lock started (pulse), and the degree/time of the last unlock (badge fade).
@@ -239,7 +240,7 @@ final class ChordView: NSView {
     }
 
     /// Releases held keys (e.g. the window lost focus); a lock keeps playing.
-    func releaseAll() { state.releaseAll(); update() }
+    func releaseAll() { state.releaseAll(); shiftHeld = false; update() }
 
     override func draw(_ dirty: NSRect) {
         NSColor(white: 0.12, alpha: 1).setFill(); bounds.fill()
@@ -252,26 +253,11 @@ final class ChordView: NSView {
             let x = 24 + display.size(withAttributes: big).width
             drawLockBadge(at: NSPoint(x: x, y: 26), size: 20, alpha: 1)
         }
-        let seqInfo = "Seq \(playing ? "▶" : "■") \(seq.length) × \(stepLengths[seq.stepLengthIdx].name)   \(Int(bpm)) BPM\(recSlot != nil ? "   ● REC" : "")"
-        // Each setting shows its own keys: arrows around key and octave, (⇧)⇥ by the scale, and an underlined
-        // letter for the single-key toggles.
-        "Key ← \(noteNames[s.key]) →   \(scales[s.scaleIdx].name) (⇧)⇥   \(seqInfo)".draw(at: NSPoint(x: 20, y: 66), withAttributes: small)
-        let settings = NSMutableAttributedString()
-        for (label, value) in [("Env", envelopePresets[envelopeIdx].name),
-                               ("Oct", "↓ \(s.octave >= 0 ? "+" : "")\(s.octave) ↑"),
-                               ("VoiceLead", s.voiceLeading ? "ON" : "OFF"),
-                               ("Bass", bassModes[s.bassMode]),
-                               ("Lock", s.lockEnabled ? "ON" : "OFF")] {
-            if settings.length > 0 { settings.append(NSAttributedString(string: "   ", attributes: small)) }
-            let item = NSMutableAttributedString(string: "\(label) \(value)", attributes: small)
-            if label != "Oct" { item.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: 1)) }
-            settings.append(item)
-        }
-        settings.draw(at: NSPoint(x: bounds.width - 20 - settings.size().width, y: 66))
+        drawContext(s)
         let gap: CGFloat = 8
         let w = (bounds.width - 40 - 6 * gap) / 7
         for d in 0..<7 {
-            let rect = NSRect(x: 20 + CGFloat(d) * (w + gap), y: 92, width: w, height: 90)
+            let rect = NSRect(x: 20 + CGFloat(d) * (w + gap), y: 84, width: w, height: 90)
             let path = NSBezierPath(roundedRect: rect, xRadius: 10, yRadius: 10)
             let sounding = s.lock?.degree == d || (s.lock == nil && s.held.last == d)
             (sounding ? NSColor.systemOrange : s.held.contains(d) ? NSColor.systemBrown : NSColor(white: 0.25, alpha: 1)).setFill()
@@ -304,7 +290,7 @@ final class ChordView: NSView {
         }
         let qw = (bounds.width - 40 - 9 * 6) / 10
         for i in 0..<10 {
-            let rect = NSRect(x: 20 + CGFloat(i) * (qw + 6), y: 198, width: qw, height: 50)
+            let rect = NSRect(x: 20 + CGFloat(i) * (qw + 6), y: 190, width: qw, height: 50)
             // A locked chord keeps its modifier lit after the key is released.
             let active = s.lock.map { $0.mod == i } ?? (s.mods.last == i)
             (active ? NSColor.systemTeal : NSColor(white: 0.22, alpha: 1)).setFill()
@@ -318,10 +304,63 @@ final class ChordView: NSView {
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: labelAttrs)
         }
         drawSequence()
-        "Space play/stop · ⇧+chord record · ⇧←/→ step · ⇧↑/↓ speed · ⇧⌫ delete · K 4/8 steps · [ ] tempo · \\ tap"
-            .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
-        let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
-        version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 263), withAttributes: faint)
+        drawFooter(s)
+    }
+
+    /// Readouts beside what they change: key, scale, and octave under the chord name (with their keys in gray),
+    /// transport under the sequencer.
+    func drawContext(_ s: RSplexState) {
+        let value: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.white]
+        let keyHint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.gray]
+        let line = NSMutableAttributedString()
+        for (text, isValue) in [("← ", false), (noteNames[s.key], true), (" →     ", false),
+                                (scales[s.scaleIdx].name, true), (" (⇧)⇥     ", false),
+                                ("↓ ", false), ("Oct \(s.octave >= 0 ? "+" : "")\(s.octave)", true), (" ↑", false)] {
+            line.append(NSAttributedString(string: text, attributes: isValue ? value : keyHint))
+        }
+        line.draw(at: NSPoint(x: 22, y: 62))
+        let small: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.lightGray]
+        let rec = NSAttributedString(string: recSlot != nil ? "● REC   " : "",
+                                     attributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: NSColor.systemRed])
+        let transport = NSMutableAttributedString(attributedString: rec)
+        transport.append(NSAttributedString(string: "\(playing ? "▶" : "■")  \(Int(bpm)) BPM   \(stepLengths[seq.stepLengthIdx].name) / step",
+                                            attributes: small))
+        transport.draw(at: NSPoint(x: bounds.width - 20 - transport.size().width, y: 64))
+    }
+
+    /// Bottom line: the toggles as lit/unlit words (underlined letter = key). Holding Shift swaps them for the
+    /// sequencer's keys. The version sits at the right either way.
+    func drawFooter(_ s: RSplexState) {
+        let y: CGFloat = 256
+        let lit: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.white]
+        let dim: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.lightGray]
+        let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.gray]
+        let versionWidth = version.size(withAttributes: dim).width
+        version.draw(at: NSPoint(x: bounds.width - 20 - versionWidth, y: y), withAttributes: dim)
+        if shiftHeld {
+            "⇧+chord record   ⇧←→ step   ⇧↑↓ speed   ⇧⌫ clear step   ␣ play/stop   [ ] \\ tempo   K 4/8 steps"
+                .draw(at: NSPoint(x: 20, y: y), withAttributes: lit)
+            return
+        }
+        var x: CGFloat = 20
+        for (word, on) in [("VoiceLead", s.voiceLeading), ("Bass \(bassModes[s.bassMode])", s.bassMode != 0),
+                           ("Lock", s.lockEnabled), ("Env \(envelopePresets[envelopeIdx].name)", true)] {
+            let item = NSMutableAttributedString(string: word, attributes: on ? lit : dim)
+            item.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: 1))
+            (on ? NSColor.systemTeal : NSColor(white: 0.3, alpha: 1)).setFill()
+            NSBezierPath(ovalIn: NSRect(x: x, y: y + 5, width: 7, height: 7)).fill()
+            item.draw(at: NSPoint(x: x + 12, y: y))
+            x += item.size().width + 34
+        }
+        let hint = "hold ⇧ for sequencer keys"
+        hint.draw(at: NSPoint(x: bounds.width - 20 - versionWidth - 24 - hint.size(withAttributes: faint).width, y: y),
+                  withAttributes: faint)
+    }
+
+    /// Shift shows the sequencer's keys in the footer while it's held.
+    override func flagsChanged(with e: NSEvent) {
+        let held = e.modifierFlags.contains(.shift)
+        if held != shiftHeld { shiftHeld = held; needsDisplay = true }
     }
 
     /// Top right, above the settings: one box per step with the chord (or – for a rest), orange at the playhead,
@@ -367,7 +406,7 @@ final class Delegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var window: NSWindow!
     let view = ChordView()
     func applicationDidFinishLaunching(_ n: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 290),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 280),
                           styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "rSplex"
         window.contentView = view
