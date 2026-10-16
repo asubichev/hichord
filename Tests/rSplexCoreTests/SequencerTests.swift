@@ -1,29 +1,46 @@
 import Testing
 @testable import rSplexCore
 
-@Test func writingAdvancesAndWraps() {
+let c = SeqStep(degree: 0), f = SeqStep(degree: 3), g = SeqStep(degree: 4)
+
+@Test func insertGoesAtTheCursorAndShiftsRight() {
     var s = Sequencer()
-    for d in 0..<8 { s.write(SeqStep(degree: d % 7)) }
+    s.insert(c); s.insert(g)
+    s.moveCursor(-1)                          // between C and G
+    #expect(s.insert(f) == 1)
+    #expect(s.steps == [c, f, g] && s.cursor == 2)
+}
+
+@Test func insertStopsWhenFull() {
+    var s = Sequencer()
+    for _ in 0..<Sequencer.maxSteps { s.insert(c) }
+    #expect(s.insert(g) == nil && s.count == Sequencer.maxSteps)
+}
+
+@Test func deleteRemovesTheStepBeforeTheCursor() {
+    var s = Sequencer()
+    s.insert(c); s.insert(f); s.insert(g)
+    s.moveCursor(-1)                          // between F and G
+    s.deleteBeforeCursor()
+    #expect(s.steps == [c, g] && s.cursor == 1)
+    s.deleteBeforeCursor(); s.deleteBeforeCursor()
+    #expect(s.steps == [g] && s.cursor == 0)  // nothing before the cursor: no-op
+}
+
+@Test func cursorStaysWithinTheGaps() {
+    var s = Sequencer()
+    s.insert(c); s.insert(f)
+    s.moveCursor(5)
+    #expect(s.cursor == 2)
+    s.moveCursor(-5)
     #expect(s.cursor == 0)
-    s.write(nil)
-    #expect(s.steps[0] == nil && s.steps[1] == SeqStep(degree: 1) && s.cursor == 1)
 }
 
 @Test func rewriteReplacesWithoutMovingTheCursor() {
     var s = Sequencer()
-    let i = s.write(SeqStep(degree: 4))
+    let i = s.insert(g)!
     s.rewrite(at: i, SeqStep(degree: 0, slash: 4))
-    #expect(s.steps[0] == SeqStep(degree: 0, slash: 4) && s.cursor == 1)
-}
-
-@Test func deleteClearsCurrentStepAndMovesLeft() {
-    var s = Sequencer()
-    s.write(SeqStep(degree: 0)); s.write(SeqStep(degree: 3)); s.write(SeqStep(degree: 4))
-    s.moveCursor(-1)                          // on step 3 (degree 4)
-    s.deleteAtCursor()
-    #expect(s.steps[2] == nil && s.steps[1] == SeqStep(degree: 3) && s.cursor == 1)
-    s.deleteAtCursor(); s.deleteAtCursor()
-    #expect(s.cursor == 0 && s.isEmpty)       // stops at the first step
+    #expect(s.steps == [SeqStep(degree: 0, slash: 4)] && s.cursor == 1)
 }
 
 @Test func stepLengthStopsAtTheEnds() {
@@ -32,16 +49,6 @@ import Testing
     #expect(s.stepLengthIdx == 0)
     s.changeStepLength(9)
     #expect(s.stepLengthIdx == stepLengths.count - 1)
-}
-
-@Test func resizeByFourWithinLimits() {
-    var s = Sequencer()
-    s.resize(grow: true)
-    #expect(s.length == 8)                    // 8 is the most
-    s.moveCursor(-1)
-    #expect(s.cursor == 7)
-    s.resize(grow: false); s.resize(grow: false)
-    #expect(s.length == 4 && s.cursor == 3)
 }
 
 @Test func stepRendersWithLiveSettings() {

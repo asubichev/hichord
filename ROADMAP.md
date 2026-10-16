@@ -36,13 +36,15 @@ independently (today the whole chord shares one envelope). This release builds b
 
 ## v1.2 — Sequencer
 
-- Up to 8 steps (K switches 4 / 8); each step stores degree, number-row modifier, and slash bass. Notes are worked
-  out at playback, so key, scale, octave, voicing, and bass changes apply to the whole sequence.
-- Shift + chord records: it writes the step at the cursor and the step follows whatever you play while holding it,
-  number-row included; the cursor moves on when the chord key is released. Shift+Delete clears the step at the cursor and moves left. Shift+←/→ move the cursor.
-- Space play/stop, step length 1/4 to 2 bars (Shift+↑ shorter, Shift+↓ longer), tempo `[` `]` and tap tempo `\`, sample-accurate timing.
+- Up to 8 steps; each stores degree, number-row modifier, and slash bass. Notes are worked out at playback, so key,
+  scale, octave, voicing, and bass changes apply to the whole sequence.
+- Edits like text: the cursor sits between steps. Shift + chord inserts a step at the cursor and records into it
+  until every chord key is up, following whatever you end on (modifier changes, switching chords).
+  Shift+Delete removes the step before the cursor; Shift+←/→ move the cursor.
+- Space play/stop, step length 1/4 to 2 bars (Shift+↑ shorter, Shift+↓ longer), tempo `[` `]` and tap tempo `\`,
+  sample-accurate timing.
 - Live playing works over a running sequence without cutting its notes.
-- Sits top right, above the settings line. No saving: the sequence lives until you quit, by design.
+- Sits top right. No saving: the sequence lives until you quit, by design.
 
 ## v1.3 — MIDI out (priority after the sequencer)
 
@@ -91,6 +93,6 @@ hardware-only features (battery, USB modes, firmware).
 
 ## Keyboard layout
 
-Taken: `A`–`J` chords, `1`–`0` modifiers, arrows, Tab, `V` `B` `L` `E`, and for the sequencer Space `K`
+Taken: `A`–`J` chords, `1`–`0` modifiers, arrows, Tab, `V` `B` `L` `E`, and for the sequencer Space
 `[` `]` `\`. Shift is the sequencer modifier: Shift + chord records, Shift + arrows move the cursor and change step
 length, Shift+Delete deletes. Prefer Shift keychords over new single keys. The arp draft uses `R` `T` `Y`.

@@ -13,26 +13,29 @@ public struct SeqStep: Equatable {
 /// How long each step lasts, in beats.
 public let stepLengths: [(name: String, beats: Double)] = [("1/4", 1), ("1/2", 2), ("1 BAR", 4), ("2 BARS", 8)]
 
-/// The pattern and its editing cursor. Steps are nil for rests.
+/// The pattern and its editing cursor. Editing works like text: the cursor sits between steps (0…count),
+/// recording inserts a step at the cursor and moves past it, and delete removes the step before the cursor.
 public struct Sequencer: Equatable {
-    public static let maxSteps = 8, minSteps = 4, growBy = 4
-    public private(set) var steps: [SeqStep?] = Array(repeating: nil, count: 8)
+    public static let maxSteps = 8
+    public private(set) var steps: [SeqStep] = []
+    /// Gap position: 0 is before the first step, `count` after the last.
     public private(set) var cursor = 0
     public var stepLengthIdx = 2
 
     public init() {}
 
-    public var length: Int { steps.count }
+    public var count: Int { steps.count }
+    public var isFull: Bool { steps.count >= Self.maxSteps }
     public var stepBeats: Double { stepLengths[stepLengthIdx].beats }
-    public var isEmpty: Bool { steps.allSatisfy { $0 == nil } }
 
-    /// Writes a chord (or a rest) at the cursor and moves to the next step, wrapping at the end. Returns the step written.
+    /// Inserts a step at the cursor, shifting later steps right, and moves the cursor past it. Returns the new
+    /// step's index, or nil when the sequence is full.
     @discardableResult
-    public mutating func write(_ step: SeqStep?) -> Int {
-        let i = cursor
-        steps[i] = step
-        cursor = (cursor + 1) % length
-        return i
+    public mutating func insert(_ step: SeqStep) -> Int? {
+        guard !isFull else { return nil }
+        steps.insert(step, at: cursor)
+        cursor += 1
+        return cursor - 1
     }
 
     /// Replaces a step without moving the cursor, e.g. as the chord being recorded changes while it's held.
@@ -41,20 +44,14 @@ public struct Sequencer: Equatable {
         steps[i] = step
     }
 
-    /// Clears the step at the cursor to a rest and moves left one (stopping at the first step). Other steps stay put.
-    public mutating func deleteAtCursor() {
-        steps[cursor] = nil
-        cursor = max(0, cursor - 1)
+    /// Removes the step before the cursor, like Backspace; later steps shift left.
+    public mutating func deleteBeforeCursor() {
+        guard cursor > 0 else { return }
+        steps.remove(at: cursor - 1)
+        cursor -= 1
     }
 
-    public mutating func moveCursor(_ delta: Int) { cursor = ((cursor + delta) % length + length) % length }
-
-    /// Adds or removes `growBy` steps at the end (4…16). Removing drops those steps' chords.
-    public mutating func resize(grow: Bool) {
-        let n = min(Self.maxSteps, max(Self.minSteps, length + (grow ? Self.growBy : -Self.growBy)))
-        if n > length { steps += Array(repeating: nil, count: n - length) } else { steps.removeLast(length - n) }
-        cursor = min(cursor, n - 1)
-    }
+    public mutating func moveCursor(_ delta: Int) { cursor = min(count, max(0, cursor + delta)) }
 
     /// Moves through `stepLengths` (shorter → longer), stopping at either end.
     public mutating func changeStepLength(_ delta: Int) {
