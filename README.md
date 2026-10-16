@@ -13,10 +13,10 @@ A chord synth for macOS, played from the computer keyboard.
 | ↑ / ↓ | octave (-2 to +2) |
 | Tab / Shift+Tab | next / previous scale |
 | Space | sequencer play / stop |
-| Shift + chord | insert a step at the cursor (up to 8) and record into it: keep holding to change the number-row modifier or switch chords; the step keeps what you end on |
-| Shift + ← / → | move the cursor (it sits between steps) |
+| Shift + chord | record into the cell after the cursor, then move past it: keep holding to change the number-row modifier or switch chords; the step keeps what you end on |
+| Shift + ← / → | move the cursor (it sits between cells) |
 | Shift + ↑ / ↓ | shorter / longer steps (1/4, 1/2, 1 bar, 2 bars) |
-| Shift + Delete | delete the step before the cursor |
+| Shift + Delete | empty the cell before the cursor and move back |
 | [ / ] | tempo −1 / +1 BPM (40–300) |
 | \\ | tap tempo (3+ taps) |
 | V | voice leading on/off |

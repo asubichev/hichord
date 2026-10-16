@@ -178,9 +178,9 @@ final class ChordView: NSView {
         synth.send([.setBPM(bpm)])
     }
 
-    /// Inserts a step at the cursor for the chord being recorded; `followRecording` keeps it up to date.
+    /// Fills the cell after the cursor with the chord being recorded; `followRecording` keeps it up to date.
     func record(degree d: Int) {
-        if recSlot == nil { recSlot = seq.insert(SeqStep(degree: d, mod: state.mods.last)) }
+        if recSlot == nil { recSlot = seq.record(SeqStep(degree: d, mod: state.mods.last)) }
     }
 
     /// Keeps the step being recorded equal to what's sounding: switching chords (hold the new one, let go of the
@@ -213,10 +213,10 @@ final class ChordView: NSView {
         let now = synth.beats
         while nextStepBeat < now + Self.lookaheadSeconds * bpm / 60 {
             // An empty sequence keeps time in silence, so the first recorded chord lands on the beat.
-            nextStepIdx = seq.count == 0 ? 0 : nextStepIdx % seq.count
+            nextStepIdx = seq.playLength == 0 ? 0 : nextStepIdx % seq.playLength
             let idx = nextStepIdx
             seqVoicer.takeSettings(from: state)
-            let step = seq.steps.indices.contains(idx) ? seq.steps[idx] : nil
+            let step = seq.steps[idx]
             let notes = Set(step.flatMap { seqVoicer.render(step: $0)?.notes } ?? [])
             let adsr = envelopePresets[envelopeIdx].adsr
             let gain = 3 / Double(max(3, notes.count))
@@ -225,7 +225,7 @@ final class ChordView: NSView {
                 + notes.sorted().map { VoiceEvent.noteOn($0, adsr, gain: gain, layer: sequencerLayer) }
             synth.schedule(events.map { TimedEvent(nextStepBeat, $0) })
             seqSounding = notes
-            if step != nil { playheadQueue.append((nextStepBeat, idx)) }
+            if seq.playLength > 0 { playheadQueue.append((nextStepBeat, idx)) }
             nextStepBeat += seq.stepBeats
             nextStepIdx = idx + 1
         }
@@ -388,26 +388,19 @@ final class ChordView: NSView {
         if held != shiftHeld { shiftHeld = held; needsDisplay = true }
     }
 
-    /// Top right, above the settings: 8 slots, recorded steps filled with their chord, the rest as empty outlines.
-    /// The step playing is orange. The cursor is a vertical bar in the gap between steps (red while recording).
+    /// Top right, above the settings: one cell per step with its chord (– when empty), orange at the playhead.
+    /// The cursor is a rounded bar in the gap between cells, gray (red while recording).
     func drawSequence() {
         let gap: CGFloat = 8, w: CGFloat = 49, top: CGFloat = 12, h: CGFloat = 46
-        let n = Sequencer.maxSteps
+        let n = Sequencer.cellCount
         let left = bounds.width - 20 - CGFloat(n) * (w + gap) + gap
         for i in 0..<n {
             let rect = NSRect(x: left + CGFloat(i) * (w + gap), y: top, width: w, height: h)
-            let path = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
-            guard i < seq.count else {
-                NSColor(white: 0.22, alpha: 1).setStroke()
-                path.lineWidth = 1
-                path.stroke()
-                continue
-            }
             let atHead = playhead == i
             (atHead ? NSColor.systemOrange : NSColor(white: 0.22, alpha: 1)).setFill()
-            path.fill()
+            NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5).fill()
             let ink = atHead ? NSColor.black : NSColor.white
-            let name = stepName(seq.steps[i], key: state.key, scale: state.scale)
+            let name = seq.steps[i].map { stepName($0, key: state.key, scale: state.scale) } ?? "–"
             let size: CGFloat = name.count > 5 ? 10 : name.count > 3 ? 12 : 14
             name.draw(at: NSPoint(x: rect.minX + 4, y: rect.minY + 6),
                       withAttributes: [.font: NSFont.boldSystemFont(ofSize: size), .foregroundColor: ink])
@@ -415,8 +408,8 @@ final class ChordView: NSView {
                             withAttributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: ink.withAlphaComponent(0.6)])
         }
         let x = left + CGFloat(seq.cursor) * (w + gap) - gap / 2
-        (recSlot != nil ? NSColor.systemRed : NSColor.white).setFill()
-        NSBezierPath(roundedRect: NSRect(x: x - 1, y: top - 2, width: 2, height: h + 4), xRadius: 1, yRadius: 1).fill()
+        (recSlot != nil ? NSColor.systemRed : NSColor(white: 0.7, alpha: 1)).setFill()
+        NSBezierPath(roundedRect: NSRect(x: x - 1.5, y: top + 2, width: 3, height: h - 4), xRadius: 1.5, yRadius: 1.5).fill()
     }
 
     func drawLockBadge(at p: NSPoint, size: CGFloat, alpha: Double) {

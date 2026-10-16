@@ -13,45 +13,44 @@ public struct SeqStep: Equatable {
 /// How long each step lasts, in beats.
 public let stepLengths: [(name: String, beats: Double)] = [("1/4", 1), ("1/2", 2), ("1 BAR", 4), ("2 BARS", 8)]
 
-/// The pattern and its editing cursor. Editing works like text: the cursor sits between steps (0…count),
-/// recording inserts a step at the cursor and moves past it, and delete removes the step before the cursor.
+/// The pattern and its editing cursor. Eight fixed cells (nil = empty); cells never shift. The cursor sits in
+/// the gaps (0…8): recording fills the cell after it and moves past, delete empties the cell before it and moves back.
 public struct Sequencer: Equatable {
-    public static let maxSteps = 8
-    public private(set) var steps: [SeqStep] = []
-    /// Gap position: 0 is before the first step, `count` after the last.
+    public static let cellCount = 8
+    public private(set) var steps: [SeqStep?] = Array(repeating: nil, count: cellCount)
+    /// Gap position: 0 is before the first cell, `cellCount` after the last.
     public private(set) var cursor = 0
     public var stepLengthIdx = 2
 
     public init() {}
 
-    public var count: Int { steps.count }
-    public var isFull: Bool { steps.count >= Self.maxSteps }
     public var stepBeats: Double { stepLengths[stepLengthIdx].beats }
+    /// Playback loops through the cells up to the last filled one; empty cells before it are rests.
+    public var playLength: Int { (steps.lastIndex { $0 != nil } ?? -1) + 1 }
 
-    /// Inserts a step at the cursor, shifting later steps right, and moves the cursor past it. Returns the new
-    /// step's index, or nil when the sequence is full.
+    /// Fills the cell after the cursor and moves past it. Returns the cell, or nil with the cursor at the end.
     @discardableResult
-    public mutating func insert(_ step: SeqStep) -> Int? {
-        guard !isFull else { return nil }
-        steps.insert(step, at: cursor)
+    public mutating func record(_ step: SeqStep) -> Int? {
+        guard cursor < Self.cellCount else { return nil }
+        steps[cursor] = step
         cursor += 1
         return cursor - 1
     }
 
-    /// Replaces a step without moving the cursor, e.g. as the chord being recorded changes while it's held.
+    /// Replaces a cell without moving the cursor, e.g. as the chord being recorded changes while it's held.
     public mutating func rewrite(at i: Int, _ step: SeqStep) {
         guard steps.indices.contains(i) else { return }
         steps[i] = step
     }
 
-    /// Removes the step before the cursor, like Backspace; later steps shift left.
+    /// Empties the cell before the cursor and moves back over it, like Backspace without the shifting.
     public mutating func deleteBeforeCursor() {
         guard cursor > 0 else { return }
-        steps.remove(at: cursor - 1)
         cursor -= 1
+        steps[cursor] = nil
     }
 
-    public mutating func moveCursor(_ delta: Int) { cursor = min(count, max(0, cursor + delta)) }
+    public mutating func moveCursor(_ delta: Int) { cursor = min(Self.cellCount, max(0, cursor + delta)) }
 
     /// Moves through `stepLengths` (shorter → longer), stopping at either end.
     public mutating func changeStepLength(_ delta: Int) {

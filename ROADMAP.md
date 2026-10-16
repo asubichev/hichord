@@ -36,11 +36,12 @@ independently (today the whole chord shares one envelope). This release builds b
 
 ## v1.2 — Sequencer
 
-- Up to 8 steps; each stores degree, number-row modifier, and slash bass. Notes are worked out at playback, so key,
+- Each step stores degree, number-row modifier, and slash bass. Notes are worked out at playback, so key,
   scale, octave, voicing, and bass changes apply to the whole sequence.
-- Edits like text: the cursor sits between steps. Shift + chord inserts a step at the cursor and records into it
-  until every chord key is up, following whatever you end on (modifier changes, switching chords).
-  Shift+Delete removes the step before the cursor; Shift+←/→ move the cursor.
+- 8 fixed cells (– when empty; cells never shift). The cursor sits between cells. Shift + chord records into the
+  cell after the cursor until every chord key is up, following whatever you end on (modifier changes, switching
+  chords). Shift+Delete empties the cell before the cursor; Shift+←/→ move the cursor. Playback loops up to the last
+  filled cell, with empty cells before it as rests.
 - Space play/stop, step length 1/4 to 2 bars (Shift+↑ shorter, Shift+↓ longer), tempo `[` `]` and tap tempo `\`,
   sample-accurate timing.
 - Live playing works over a running sequence without cutting its notes.

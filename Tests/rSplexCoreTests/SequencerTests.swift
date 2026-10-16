@@ -3,44 +3,49 @@ import Testing
 
 let c = SeqStep(degree: 0), f = SeqStep(degree: 3), g = SeqStep(degree: 4)
 
-@Test func insertGoesAtTheCursorAndShiftsRight() {
+@Test func recordFillsTheCellAfterTheCursor() {
     var s = Sequencer()
-    s.insert(c); s.insert(g)
+    s.record(c); s.record(g)
     s.moveCursor(-1)                          // between C and G
-    #expect(s.insert(f) == 1)
-    #expect(s.steps == [c, f, g] && s.cursor == 2)
+    #expect(s.record(f) == 1)
+    #expect(s.steps[0] == c && s.steps[1] == f && s.steps[2] == nil && s.cursor == 2)   // G replaced, nothing shifts
 }
 
-@Test func insertStopsWhenFull() {
+@Test func recordStopsAtTheEnd() {
     var s = Sequencer()
-    for _ in 0..<Sequencer.maxSteps { s.insert(c) }
-    #expect(s.insert(g) == nil && s.count == Sequencer.maxSteps)
+    s.moveCursor(Sequencer.cellCount)
+    #expect(s.record(c) == nil && s.playLength == 0)
 }
 
-@Test func deleteRemovesTheStepBeforeTheCursor() {
+@Test func deleteEmptiesTheCellBeforeTheCursor() {
     var s = Sequencer()
-    s.insert(c); s.insert(f); s.insert(g)
+    s.record(c); s.record(f); s.record(g)
     s.moveCursor(-1)                          // between F and G
     s.deleteBeforeCursor()
-    #expect(s.steps == [c, g] && s.cursor == 1)
+    #expect(s.steps[0] == c && s.steps[1] == nil && s.steps[2] == g && s.cursor == 1)
     s.deleteBeforeCursor(); s.deleteBeforeCursor()
-    #expect(s.steps == [g] && s.cursor == 0)  // nothing before the cursor: no-op
+    #expect(s.steps[0] == nil && s.cursor == 0)   // nothing before the cursor: no-op
+}
+
+@Test func playbackLoopsToTheLastFilledCell() {
+    var s = Sequencer()
+    s.moveCursor(2); s.record(g)
+    #expect(s.playLength == 3)                // two rests, then G
 }
 
 @Test func cursorStaysWithinTheGaps() {
     var s = Sequencer()
-    s.insert(c); s.insert(f)
-    s.moveCursor(5)
-    #expect(s.cursor == 2)
-    s.moveCursor(-5)
+    s.moveCursor(20)
+    #expect(s.cursor == Sequencer.cellCount)
+    s.moveCursor(-20)
     #expect(s.cursor == 0)
 }
 
 @Test func rewriteReplacesWithoutMovingTheCursor() {
     var s = Sequencer()
-    let i = s.insert(g)!
+    let i = s.record(g)!
     s.rewrite(at: i, SeqStep(degree: 0, slash: 4))
-    #expect(s.steps == [SeqStep(degree: 0, slash: 4)] && s.cursor == 1)
+    #expect(s.steps[0] == SeqStep(degree: 0, slash: 4) && s.cursor == 1)
 }
 
 @Test func stepLengthStopsAtTheEnds() {
