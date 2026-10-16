@@ -179,24 +179,17 @@ final class ChordView: NSView {
         synth.send([.setBPM(bpm)])
     }
 
-    /// Records the chord just pressed at the cursor. In SLASH bass, a second key held over the first turns the
-    /// step being recorded into a slash chord; otherwise a new chord pressed over a held one takes the next step.
+    /// Starts recording the step at the cursor; `followRecording` fills it in.
     func record(degree d: Int) {
-        if state.bassMode == 2, state.held.count >= 2, let slot = recSlot {
-            seq.rewrite(at: slot, SeqStep(degree: d, mod: state.mods.last, slash: state.held[0]))
-            return
-        }
-        if recSlot != nil { seq.moveCursor(1) }
-        seq.rewrite(at: seq.cursor, SeqStep(degree: d, mod: state.mods.last))
-        recSlot = seq.cursor
+        if recSlot == nil { recSlot = seq.cursor }
     }
 
-    /// Keeps the step being recorded equal to what's sounding: pressing or releasing a modifier while the chord is
-    /// held rewrites it, so the step stores whatever was played last.
+    /// Keeps the step being recorded equal to what's sounding: switching chords (hold the new one, let go of the
+    /// old) or changing the modifier rewrites it, so the step stores whatever you end on. The cursor moves on
+    /// once every chord key is up. In SLASH bass, two held keys record as a slash chord.
     func followRecording() {
         guard let slot = recSlot else { return }
         guard let d = state.held.last else { recSlot = nil; seq.moveCursor(1); return }   // released: next step
-        guard seq.steps[slot]?.degree == d else { return }
         let slash = state.bassMode == 2 && state.held.count >= 2 ? state.held[0] : nil
         seq.rewrite(at: slot, SeqStep(degree: d, mod: state.mods.last, slash: slash))
     }
@@ -337,14 +330,21 @@ final class ChordView: NSView {
         let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.gray]
         let versionWidth = version.size(withAttributes: dim).width
         version.draw(at: NSPoint(x: bounds.width - 20 - versionWidth, y: y), withAttributes: dim)
+        var x: CGFloat = 20
         if shiftHeld {
-            "⇧+chord record   ⇧←→ step   ⇧↑↓ speed   ⇧⌫ clear step   ␣ play/stop   [ ] \\ tempo   K 4/8 steps"
-                .draw(at: NSPoint(x: 20, y: y), withAttributes: lit)
+            // Same rhythm as the toggles, with the keys in place of the lights.
+            for (keys, label) in [("⇧ chord", "record"), ("⇧ ← →", "step"), ("⇧ ↑ ↓", "speed"), ("⇧ ⌫", "clear"),
+                                  ("␣", "play"), ("[ ] \\", "tempo"), ("K", "4/8 steps")] {
+                let item = NSMutableAttributedString(string: keys + " ",
+                    attributes: [.font: NSFont.boldSystemFont(ofSize: 12), .foregroundColor: NSColor.systemTeal])
+                item.append(NSAttributedString(string: label, attributes: lit))
+                item.draw(at: NSPoint(x: x, y: y))
+                x += item.size().width + 22
+            }
             return
         }
-        var x: CGFloat = 20
         for (word, on) in [("VoiceLead", s.voiceLeading), ("Bass \(bassModes[s.bassMode])", s.bassMode != 0),
-                           ("Lock", s.lockEnabled), ("Env \(envelopePresets[envelopeIdx].name)", true)] {
+                           ("Lock", s.lockEnabled)] {
             let item = NSMutableAttributedString(string: word, attributes: on ? lit : dim)
             item.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: 1))
             (on ? NSColor.systemTeal : NSColor(white: 0.3, alpha: 1)).setFill()
@@ -352,9 +352,33 @@ final class ChordView: NSView {
             item.draw(at: NSPoint(x: x + 12, y: y))
             x += item.size().width + 34
         }
+        // Env shows its shape instead of a light.
+        drawEnvelope(envelopePresets[envelopeIdx].adsr, in: NSRect(x: x, y: y + 2, width: 26, height: 12))
+        let env = NSMutableAttributedString(string: "Env \(envelopePresets[envelopeIdx].name)", attributes: lit)
+        env.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: 1))
+        env.draw(at: NSPoint(x: x + 32, y: y))
         let hint = "hold ⇧ for sequencer keys"
         hint.draw(at: NSPoint(x: bounds.width - 20 - versionWidth - 24 - hint.size(withAttributes: faint).width, y: y),
                   withAttributes: faint)
+    }
+
+    /// The envelope as a line: attack up, decay to sustain, a held stretch, then release. Each stage gets its share
+    /// of the width by time (with a fixed hold, and a minimum so even instant stages show).
+    func drawEnvelope(_ a: ADSR, in r: NSRect) {
+        let parts = [max(0.08, a.attack), max(0.08, a.decay), 0.5, max(0.08, a.release)]
+        let total = parts.reduce(0, +)
+        let xs = parts.reduce(into: [0.0]) { $0.append($0.last! + $1) }.map { r.minX + r.width * $0 / total }
+        let top = r.minY, bottom = r.maxY, sus = bottom - r.height * a.sustain
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: xs[0], y: bottom))
+        path.line(to: NSPoint(x: xs[1], y: top))
+        path.line(to: NSPoint(x: xs[2], y: sus))
+        path.line(to: NSPoint(x: xs[3], y: sus))
+        path.line(to: NSPoint(x: xs[4], y: bottom))
+        NSColor.systemTeal.setStroke()
+        path.lineWidth = 1.5
+        path.lineJoinStyle = .round
+        path.stroke()
     }
 
     /// Shift shows the sequencer's keys in the footer while it's held.
@@ -363,13 +387,14 @@ final class ChordView: NSView {
         if held != shiftHeld { shiftHeld = held; needsDisplay = true }
     }
 
-    /// Top right, above the settings: one box per step with the chord (or – for a rest), orange at the playhead,
-    /// with an outline cursor (red while recording). Right-aligned, so 4 steps sit where the last 4 of 8 would.
+    /// Top right, above the settings: one box per step with the chord (or – for a rest), orange at the playhead.
+    /// The cursor is a bar under its step, like a text cursor (red while recording). Right-aligned, so 4 steps sit
+    /// where the last 4 of 8 would.
     func drawSequence() {
         let gap: CGFloat = 4, w: CGFloat = 52, top: CGFloat = 12
         let left = bounds.width - 20 - CGFloat(seq.length) * (w + gap) + gap
         for i in 0..<seq.length {
-            let rect = NSRect(x: left + CGFloat(i) * (w + gap), y: top, width: w, height: 46)
+            let rect = NSRect(x: left + CGFloat(i) * (w + gap), y: top, width: w, height: 42)
             let path = NSBezierPath(roundedRect: rect, xRadius: 5, yRadius: 5)
             let atHead = playhead == i
             (atHead ? NSColor.systemOrange : NSColor(white: 0.22, alpha: 1)).setFill()
@@ -382,9 +407,9 @@ final class ChordView: NSView {
             "\(i + 1)".draw(at: NSPoint(x: rect.minX + 4, y: rect.maxY - 16),
                             withAttributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: ink.withAlphaComponent(0.6)])
             if i == seq.cursor {
-                (recSlot != nil ? NSColor.systemRed : NSColor(white: 0.7, alpha: 1)).setStroke()
-                path.lineWidth = recSlot != nil ? 2.5 : 1.5
-                path.stroke()
+                (recSlot != nil ? NSColor.systemRed : NSColor(white: 0.7, alpha: 1)).setFill()
+                NSBezierPath(roundedRect: NSRect(x: rect.minX + 2, y: rect.maxY + 3, width: rect.width - 4, height: 3),
+                             xRadius: 1.5, yRadius: 1.5).fill()
             }
         }
     }
