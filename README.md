@@ -17,7 +17,6 @@ A chord synth for macOS, played from the computer keyboard.
 | Shift + ← / → | move the cursor |
 | Shift + ↑ / ↓ | shorter / longer steps (1/4, 1/2, 1 bar, 2 bars) |
 | Shift + Delete | clear the step at the cursor and move left one |
-| - | rest at the cursor, then move on |
 | K | 4 or 8 steps |
 | [ / ] | tempo −1 / +1 BPM (40–300) |
 | \\ | tap tempo (3+ taps) |

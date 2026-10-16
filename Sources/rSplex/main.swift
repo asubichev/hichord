@@ -5,7 +5,7 @@ import rSplexCore
 let degreeKeys = ["a", "s", "d", "f", "g", "h", "j"]
 /// Keys that only change sound, tempo, or the sequencer; pressing them leaves a lock in place.
 let lockSafeChars: Set<String> = ["e", "k", "[", "]", "\\"]
-let lockSafeKeyCodes: Set<UInt16> = [49, 27]   // Space, -
+let lockSafeKeyCodes: Set<UInt16> = [49]   // Space
 let shiftLockSafeKeyCodes: Set<UInt16> = [123, 124, 125, 126, 51]   // Shift + arrows, Shift+Delete
 /// Number row 1…0 by key code, so Shift (which turns 1 into !) doesn't change which modifier a key is.
 let modKeyCodes: [UInt16] = [18, 19, 20, 21, 23, 22, 26, 28, 25, 29]
@@ -149,7 +149,6 @@ final class ChordView: NSView {
             envelopeIdx = (envelopeIdx + 1) % envelopePresets.count
         case 49: playing ? stopSequence() : startSequence()     // Space
         case 51: if shift { seq.deleteAtCursor(); recSlot = nil }   // Shift+Delete
-        case 27: seq.write(nil); recSlot = nil                   // - rest
         default:
             if let d = degree {
                 state.press(degree: d)
@@ -319,7 +318,7 @@ final class ChordView: NSView {
             modLabels[i].draw(at: NSPoint(x: rect.minX + 5, y: rect.minY + 26), withAttributes: labelAttrs)
         }
         drawSequence()
-        "Space play/stop · ⇧+chord record · ⇧←/→ step · ⇧↑/↓ speed · ⇧⌫ delete · - rest · K 4/8 steps · [ ] tempo · \\ tap"
+        "Space play/stop · ⇧+chord record · ⇧←/→ step · ⇧↑/↓ speed · ⇧⌫ delete · K 4/8 steps · [ ] tempo · \\ tap"
             .draw(at: NSPoint(x: 20, y: 262), withAttributes: small)
         let faint: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.gray]
         version.draw(at: NSPoint(x: bounds.width - 20 - version.size(withAttributes: faint).width, y: 263), withAttributes: faint)
